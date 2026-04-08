@@ -150,7 +150,7 @@ def analyze_resume(resume_text: str, job_description: str, role_level: str = "in
 
     message = client.messages.create(
         model="claude-sonnet-4-6",
-        max_tokens=4096,
+        max_tokens=8096,
         messages=[
             {"role": "user", "content": prompt}
         ]

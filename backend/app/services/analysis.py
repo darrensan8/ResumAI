@@ -156,7 +156,7 @@ def analyze_resume(resume_text: str, job_description: str, role_level: str = "in
         ]
     )
 
-    response_text = message.choices[0].message.content
+    response_text = message.content[0].text.strip()
 
     if response_text.startswith("```"):
         response_text = response_text.split("```")[1]

@@ -51,5 +51,5 @@ async def upload_resume(
         db.add(new_resume)
     db.commit()
 
-    response.set_cookie(key="session_id", value=session_id, httponly=True)
-    return {"message": "Resume uploaded successfully"}
+    response.set_cookie(key="session_id", value=session_id, httponly=False, samesite="none", secure=True)
+    return {"message": "Resume uploaded successfully", "session_id": session_id}

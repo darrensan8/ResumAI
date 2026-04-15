@@ -63,8 +63,11 @@ export default function Analysis() {
     <div style={styles.container}>
       <div style={styles.header}>
         <h1 style={styles.title}>ResumAI</h1>
-        <button style={styles.restartButton} onClick={() => navigate('/')}>
-          Analyze Another
+        <button style={styles.restartButton} onClick={() => {
+            localStorage.removeItem('session_id')
+                navigate('/')
+                    }}>
+                Analyze Another
         </button>
       </div>
 

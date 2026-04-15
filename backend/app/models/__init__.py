@@ -30,3 +30,12 @@ class ResumeFeedback(Base):
     session_id = Column(String, primary_key=True, index=True)
     improvements_data = Column(JSON, nullable=False)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+class Analytics(Base):
+    __tablename__ = "analytics"
+
+    id = Column(Integer, primary_key=True, index=True, autoincrement=True)
+    session_id = Column(String, primary_key=True, index=True)
+    resume_length = Column(String, nullable=False)
+    job_description_length = Column(String, nullable=False)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())

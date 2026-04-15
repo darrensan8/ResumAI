@@ -4,6 +4,7 @@ from app.database import get_db
 from app.models import Resume, JobDescription, AnalysisScores, ResumeFeedback
 from app.services.analysis import analyze_resume
 from pydantic import BaseModel
+from app.models import Resume, JobDescription, AnalysisScores, ResumeFeedback, Analytics
 
 router = APIRouter()
 

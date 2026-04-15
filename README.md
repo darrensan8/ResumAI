@@ -2,7 +2,7 @@
 
 ResumAI is a AI-powered resume analyzer that evaluates resumes against job descriptions using Claude, returning deep structured feedback across 9 scoring dimensions.
 
-**Live API:** https://resumai-production-c766.up.railway.app/docs
+**Live API:** [https://resumai-production-c766.up.railway.app/docs](https://resum-ai-alpha.vercel.app/)
 
 ---
 

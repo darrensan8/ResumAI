@@ -43,11 +43,16 @@ async def analyze(
         analysis_data=analysis
     )
     db.add(new_score)
-    new_feedback = ResumeFeedback(
-        session_id=effective_session_id,
-        improvements_data=analysis.get("improvements", [])
-    )
-    db.add(new_feedback)
+
+    existing_feedback = db.query(ResumeFeedback).filter(
+        ResumeFeedback.session_id == effective_session_id
+    ).first()
+    if not existing_feedback:
+        db.add(ResumeFeedback(
+            session_id=effective_session_id,
+            improvements_data=analysis.get("improvements", [])
+        ))
+
 
     db.commit()
     return analysis

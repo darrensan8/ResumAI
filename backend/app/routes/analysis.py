@@ -43,7 +43,6 @@ async def analyze(
         analysis_data=analysis
     )
     db.add(new_score)
-
     existing_feedback = db.query(ResumeFeedback).filter(
         ResumeFeedback.session_id == effective_session_id
     ).first()
@@ -52,7 +51,6 @@ async def analyze(
             session_id=effective_session_id,
             improvements_data=analysis.get("improvements", [])
         ))
-
 
     db.commit()
     return analysis

@@ -82,3 +82,9 @@ npm run dev
 Backend API docs available at `http://localhost:8000/docs`  
 Frontend available at `http://localhost:5173`
 
+---
+
+## Working on / Future Improvements
+User Sign Up / Login
+LLM Response time
+Memory on analyzed resumes

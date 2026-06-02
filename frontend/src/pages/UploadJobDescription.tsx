@@ -7,6 +7,7 @@ const API_URL = 'https://resumai-production-c766.up.railway.app'
 export default function UploadJobDescription() {
   const navigate = useNavigate()
   const [jobDescription, setJobDescription] = useState('')
+  const [roleLevel, setRoleLevel] = useState('entry')
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState('')
 
@@ -32,6 +33,7 @@ export default function UploadJobDescription() {
             , headers: { 'X-Session-ID': sessionId }
         }
       )
+      localStorage.setItem('role_level', roleLevel)
       navigate('/analysis')
     } catch (err) {
       setError('Failed to upload job description. Please try again.')
@@ -45,6 +47,22 @@ export default function UploadJobDescription() {
       <div style={styles.card}>
         <h1 style={styles.title}>Resumai</h1>
         <p style={styles.subtitle}>Paste the job description below</p>
+
+        <div style={styles.roleRow}>
+          <label style={styles.roleLabel}>Role Level</label>
+          <select
+            style={styles.roleSelect}
+            value={roleLevel}
+            onChange={(e) => setRoleLevel(e.target.value)}
+          >
+            <option value="intern">Intern</option>
+            <option value="entry">Entry</option>
+            <option value="mid">Mid</option>
+            <option value="senior">Senior</option>
+            <option value="staff">Staff</option>
+            <option value="principal">Principal</option>
+          </select>
+        </div>
 
         <textarea
           style={styles.textarea}
@@ -102,6 +120,27 @@ const styles = {
     color: '#666',
     marginBottom: '24px',
     textAlign: 'center' as const,
+  },
+  roleRow: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: '12px',
+    marginBottom: '16px',
+  },
+  roleLabel: {
+    fontSize: '14px',
+    fontWeight: '500' as const,
+    color: '#444',
+    whiteSpace: 'nowrap' as const,
+  },
+  roleSelect: {
+    padding: '8px 12px',
+    fontSize: '14px',
+    border: '1px solid #ddd',
+    borderRadius: '8px',
+    outline: 'none',
+    backgroundColor: 'white',
+    cursor: 'pointer',
   },
   textarea: {
     width: '100%',

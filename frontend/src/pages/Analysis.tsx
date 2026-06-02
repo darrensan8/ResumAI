@@ -20,9 +20,10 @@ export default function Analysis() {
       }
 
       try {
+        const roleLevel = localStorage.getItem('role_level') || 'entry'
         const response = await axios.post(
           `${API_URL}/api/analysis/analyze`,
-          { role_level: 'intern' },
+          { role_level: roleLevel },
           {
             withCredentials: true,
             headers: { 'X-Session-ID': sessionId },
@@ -66,6 +67,7 @@ export default function Analysis() {
         <button style={styles.restartButton} onClick={() => {
             document.cookie = "session_id=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/;"
             localStorage.removeItem('session_id')
+            localStorage.removeItem('role_level')
             navigate('/')
                     }}>
                 Analyze Another

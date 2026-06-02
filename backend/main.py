@@ -1,7 +1,6 @@
 from fastapi import FastAPI
 from app.database import engine
 from app.models import Base
-from app.routes import resume, job_description
 from app.routes import analysis, get_resume, resume, job_description
 from fastapi.middleware.cors import CORSMiddleware
 

@@ -3,6 +3,8 @@
 __pycache__/
 *.pyc
 .env
+services/storage.py
+services/cleanup.py
 
 # Mac
 .DS_Store
@@ -10,3 +12,4 @@ __pycache__/
 # Node (for frontend later)
 node_modules/
 .next/
+

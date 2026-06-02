@@ -35,7 +35,6 @@ async def upload_resume(
 
     if not session_id:
         session_id = str(uuid.uuid4())
-        response.set_cookie(key="session_id", value=session_id, httponly=True)
 
     existing = db.query(Resume).filter(Resume.session_id == session_id).first()
 

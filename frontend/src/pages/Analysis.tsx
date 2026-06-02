@@ -129,6 +129,26 @@ export default function Analysis() {
         </div>
       </div>
 
+      {/* Green and Red Flags */}
+      <div style={styles.twoCol}>
+        <div style={styles.section}>
+          <h2 style={styles.sectionTitle}>Green Flags</h2>
+          {analysis.green_flags?.map((f: string, i: number) => (
+            <div key={i} style={styles.listItem}>
+              <span style={styles.green}>▲</span> {f}
+            </div>
+          ))}
+        </div>
+        <div style={styles.section}>
+          <h2 style={styles.sectionTitle}>Red Flags</h2>
+          {analysis.red_flags?.map((f: string, i: number) => (
+            <div key={i} style={styles.listItem}>
+              <span style={styles.red}>▼</span> {f}
+            </div>
+          ))}
+        </div>
+      </div>
+
       {/* Missing Keywords */}
       <div style={styles.section}>
         <h2 style={styles.sectionTitle}>Missing Critical Keywords</h2>
@@ -137,6 +157,32 @@ export default function Analysis() {
             <span key={i} style={styles.tag}>{k}</span>
           ))}
         </div>
+      </div>
+
+      {/* Interview Readiness */}
+      <div style={styles.section}>
+        <h2 style={styles.sectionTitle}>Interview Readiness</h2>
+        <div style={styles.readinessGrid}>
+          {[
+            { label: 'Technical Screen', key: 'technical_screen_ready' },
+            { label: 'System Design', key: 'system_design_ready' },
+            { label: 'Behavioral', key: 'behavioral_ready' },
+          ].map(({ label, key }) => (
+            <div key={key} style={styles.readinessItem}>
+              <span style={{
+                ...styles.readinessBadge,
+                backgroundColor: analysis.interview_readiness?.[key] ? '#dcfce7' : '#fee2e2',
+                color: analysis.interview_readiness?.[key] ? '#16a34a' : '#dc2626',
+              }}>
+                {analysis.interview_readiness?.[key] ? '✓' : '✗'}
+              </span>
+              <span style={styles.readinessLabel}>{label}</span>
+            </div>
+          ))}
+        </div>
+        {analysis.interview_readiness?.notes && (
+          <p style={styles.readinessNotes}>{analysis.interview_readiness.notes}</p>
+        )}
       </div>
 
       {/* Improvements */}
@@ -357,6 +403,39 @@ const styles: { [key: string]: React.CSSProperties } = {
     fontSize: '13px',
     color: '#2563eb',
     lineHeight: '1.6',
+  },
+  readinessGrid: {
+    display: 'flex',
+    gap: '24px',
+    marginBottom: '16px',
+  },
+  readinessItem: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: '8px',
+  },
+  readinessBadge: {
+    width: '28px',
+    height: '28px',
+    borderRadius: '50%',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    fontSize: '14px',
+    fontWeight: '700',
+  },
+  readinessLabel: {
+    fontSize: '14px',
+    color: '#444',
+  },
+  readinessNotes: {
+    fontSize: '13px',
+    color: '#666',
+    fontStyle: 'italic',
+    lineHeight: '1.6',
+    borderTop: '1px solid #f1f5f9',
+    paddingTop: '12px',
+    marginTop: '4px',
   },
   loadingText: {
     fontSize: '20px',

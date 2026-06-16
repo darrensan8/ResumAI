@@ -1,8 +1,13 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import axios from 'axios'
+import { API_URL } from '../lib/api'
+import PageShell from '../components/PageShell'
+import GlassCard from '../components/GlassCard'
+import Stepper from '../components/Stepper'
+import Button from '../components/Button'
 
-const API_URL = 'https://resumai-production-c766.up.railway.app'
+const ROLE_LEVELS = ['intern', 'entry', 'mid', 'senior', 'staff', 'principal']
 
 export default function UploadJobDescription() {
   const navigate = useNavigate()
@@ -12,6 +17,7 @@ export default function UploadJobDescription() {
   const [error, setError] = useState('')
 
   const wordCount = jobDescription.trim().split(/\s+/).filter(Boolean).length
+  const ready = wordCount >= 50 && !isLoading
 
   const handleSubmit = async () => {
     if (wordCount < 50) {
@@ -24,18 +30,15 @@ export default function UploadJobDescription() {
 
     const sessionId = localStorage.getItem('session_id')
 
-
     try {
       await axios.post(
         `${API_URL}/api/job-description/upload-job-description`,
         { job_description: jobDescription },
-        { withCredentials: true 
-            , headers: { 'X-Session-ID': sessionId }
-        }
+        { withCredentials: true, headers: { 'X-Session-ID': sessionId } }
       )
       localStorage.setItem('role_level', roleLevel)
       navigate('/analysis')
-    } catch (err) {
+    } catch {
       setError('Failed to upload job description. Please try again.')
     } finally {
       setIsLoading(false)
@@ -43,139 +46,68 @@ export default function UploadJobDescription() {
   }
 
   return (
-    <div style={styles.container}>
-      <div style={styles.card}>
-        <h1 style={styles.title}>Resumai</h1>
-        <p style={styles.subtitle}>Paste the job description below</p>
-
-        <div style={styles.roleRow}>
-          <label style={styles.roleLabel}>Role Level</label>
-          <select
-            style={styles.roleSelect}
-            value={roleLevel}
-            onChange={(e) => setRoleLevel(e.target.value)}
-          >
-            <option value="intern">Intern</option>
-            <option value="entry">Entry</option>
-            <option value="mid">Mid</option>
-            <option value="senior">Senior</option>
-            <option value="staff">Staff</option>
-            <option value="principal">Principal</option>
-          </select>
+    <PageShell centered>
+      <div className="w-full max-w-2xl">
+        <div className="mb-8 text-center">
+          <h1 className="bg-gradient-to-r from-brand-600 to-[var(--color-accent-cyan)] bg-clip-text text-4xl font-extrabold tracking-tight text-transparent">
+            ResumAI
+          </h1>
+          <p className="mt-2 text-base text-slate-500">Paste the job description to compare against</p>
         </div>
 
-        <textarea
-          style={styles.textarea}
-          placeholder="Copy and paste the full job description here..."
-          value={jobDescription}
-          onChange={(e) => setJobDescription(e.target.value)}
-        />
-
-        <div style={styles.footer}>
-          <p style={styles.wordCount}>{wordCount} / 50 words minimum</p>
-          <button
-            style={{
-              ...styles.button,
-              opacity: wordCount < 50 || isLoading ? 0.5 : 1,
-              cursor: wordCount < 50 || isLoading ? 'not-allowed' : 'pointer',
-            }}
-            onClick={handleSubmit}
-            disabled={wordCount < 50 || isLoading}
-          >
-            {isLoading ? 'Analyzing...' : 'Analyze Resume'}
-          </button>
+        <div className="mb-6">
+          <Stepper current={1} />
         </div>
 
-        {error && <p style={styles.error}>{error}</p>}
+        <GlassCard>
+          <div className="mb-4">
+            <label className="mb-2 block text-sm font-semibold text-slate-600">Target role level</label>
+            <div className="flex flex-wrap gap-1.5">
+              {ROLE_LEVELS.map((level) => (
+                <button
+                  key={level}
+                  onClick={() => setRoleLevel(level)}
+                  className={
+                    'rounded-full px-3 py-1.5 text-xs font-medium capitalize transition-colors ' +
+                    (roleLevel === level
+                      ? 'bg-brand-600 text-white shadow-sm'
+                      : 'bg-white/70 text-slate-500 hover:bg-white')
+                  }
+                >
+                  {level}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <textarea
+            className="h-72 w-full resize-y rounded-xl border border-white/70 bg-white/70 p-4 text-sm text-slate-700 outline-none transition focus:border-brand-400 focus:ring-2 focus:ring-brand-200 placeholder:text-slate-400"
+            placeholder="Copy and paste the full job description here…"
+            value={jobDescription}
+            onChange={(e) => setJobDescription(e.target.value)}
+          />
+
+          <div className="mt-4 flex items-center justify-between gap-4">
+            <span
+              className={
+                'text-xs font-medium ' +
+                (wordCount >= 50 ? 'text-emerald-600' : 'text-slate-400')
+              }
+            >
+              {wordCount} / 50 words minimum
+            </span>
+            <Button onClick={handleSubmit} disabled={!ready}>
+              {isLoading ? 'Analyzing…' : 'Analyze Resume →'}
+            </Button>
+          </div>
+
+          {error && (
+            <p className="mt-4 rounded-lg bg-red-50 px-4 py-2 text-center text-sm text-red-600">
+              {error}
+            </p>
+          )}
+        </GlassCard>
       </div>
-    </div>
+    </PageShell>
   )
-}
-
-const styles = {
-  container: {
-    minHeight: '100vh',
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: '#f5f5f5',
-  },
-  card: {
-    backgroundColor: 'white',
-    borderRadius: '12px',
-    padding: '48px',
-    width: '100%',
-    maxWidth: '640px',
-    boxShadow: '0 2px 12px rgba(0,0,0,0.08)',
-  },
-  title: {
-    fontSize: '32px',
-    fontWeight: '700',
-    color: '#1a1a1a',
-    marginBottom: '8px',
-    textAlign: 'center' as const,
-  },
-  subtitle: {
-    fontSize: '16px',
-    color: '#666',
-    marginBottom: '24px',
-    textAlign: 'center' as const,
-  },
-  roleRow: {
-    display: 'flex',
-    alignItems: 'center',
-    gap: '12px',
-    marginBottom: '16px',
-  },
-  roleLabel: {
-    fontSize: '14px',
-    fontWeight: '500' as const,
-    color: '#444',
-    whiteSpace: 'nowrap' as const,
-  },
-  roleSelect: {
-    padding: '8px 12px',
-    fontSize: '14px',
-    border: '1px solid #ddd',
-    borderRadius: '8px',
-    outline: 'none',
-    backgroundColor: 'white',
-    cursor: 'pointer',
-  },
-  textarea: {
-    width: '100%',
-    height: '280px',
-    padding: '16px',
-    fontSize: '14px',
-    border: '1px solid #ddd',
-    borderRadius: '8px',
-    resize: 'vertical' as const,
-    fontFamily: 'inherit',
-    outline: 'none',
-    boxSizing: 'border-box' as const,
-  },
-  footer: {
-    display: 'flex',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginTop: '16px',
-  },
-  wordCount: {
-    fontSize: '13px',
-    color: '#999',
-  },
-  button: {
-    backgroundColor: '#2563eb',
-    color: 'white',
-    padding: '12px 32px',
-    borderRadius: '8px',
-    border: 'none',
-    fontSize: '16px',
-    fontWeight: '500' as const,
-  },
-  error: {
-    color: '#ef4444',
-    fontSize: '14px',
-    marginTop: '12px',
-  },
 }

@@ -1,36 +1,56 @@
 import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import axios from 'axios'
-import React from 'react'
+import { API_URL } from '../lib/api'
+import { mockAnalysis } from '../mocks/analysis'
+import PageShell from '../components/PageShell'
+import GlassCard from '../components/GlassCard'
+import Button from '../components/Button'
+import Stepper from '../components/Stepper'
 
-const API_URL = 'https://resumai-production-c766.up.railway.app'
+// The mock fixture mirrors the backend response, so it doubles as the type.
+type AnalysisData = typeof mockAnalysis
+
+const scoreColor = (v: number) =>
+  v >= 70 ? 'bg-emerald-500' : v >= 50 ? 'bg-amber-500' : 'bg-red-500'
+
+const RECOMMENDATION_STYLES: Record<string, string> = {
+  strong_yes: 'bg-emerald-100 text-emerald-700',
+  yes: 'bg-emerald-100 text-emerald-700',
+  maybe: 'bg-amber-100 text-amber-700',
+  no: 'bg-red-100 text-red-700',
+  strong_no: 'bg-red-100 text-red-700',
+}
 
 export default function Analysis() {
   const navigate = useNavigate()
-  const [analysis, setAnalysis] = useState<any>(null)
+  const [analysis, setAnalysis] = useState<AnalysisData | null>(null)
   const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState('')
 
   useEffect(() => {
+    // Dev-only: ?mock=1 renders fixture data with no backend/Claude call.
+    if (new URLSearchParams(window.location.search).get('mock') === '1') {
+      setAnalysis(mockAnalysis)
+      setIsLoading(false)
+      return
+    }
+
     const fetchAnalysis = async () => {
       const sessionId = localStorage.getItem('session_id')
       if (!sessionId) {
         navigate('/')
         return
       }
-
       try {
         const roleLevel = localStorage.getItem('role_level') || 'entry'
         const response = await axios.post(
           `${API_URL}/api/analysis/analyze`,
           { role_level: roleLevel },
-          {
-            withCredentials: true,
-            headers: { 'X-Session-ID': sessionId },
-          }
+          { withCredentials: true, headers: { 'X-Session-ID': sessionId } }
         )
         setAnalysis(response.data)
-      } catch (err) {
+      } catch {
         setError('Failed to analyze resume. Please try again.')
       } finally {
         setIsLoading(false)
@@ -38,425 +58,265 @@ export default function Analysis() {
     }
 
     fetchAnalysis()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
+
+  const restart = () => {
+    document.cookie = 'session_id=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/;'
+    localStorage.removeItem('session_id')
+    localStorage.removeItem('role_level')
+    navigate('/')
+  }
 
   if (isLoading) {
     return (
-      <div style={styles.centered}>
-        <p style={styles.loadingText}>Analyzing your resume...</p>
-        <p style={styles.loadingSubtext}>This may take up to 30 seconds</p>
-      </div>
+      <PageShell centered>
+        <div className="flex flex-col items-center gap-4">
+          <div className="h-12 w-12 animate-spin rounded-full border-4 border-brand-200 border-t-brand-600" />
+          <p className="text-lg font-semibold text-slate-700">Analyzing your resume…</p>
+          <p className="text-sm text-slate-400">This may take up to 30 seconds</p>
+        </div>
+      </PageShell>
     )
   }
 
   if (error) {
     return (
-      <div style={styles.centered}>
-        <p style={styles.error}>{error}</p>
-        <button style={styles.button} onClick={() => navigate('/')}>
-          Start Over
-        </button>
-      </div>
+      <PageShell centered>
+        <GlassCard className="text-center">
+          <p className="mb-5 text-base text-red-600">{error}</p>
+          <Button onClick={restart}>Start Over</Button>
+        </GlassCard>
+      </PageShell>
     )
   }
 
+  if (!analysis) return null
+
+  const overall = analysis.overall_score
+  const recoKey = analysis.hiring_recommendation
+  const readiness = analysis.interview_readiness
+
   return (
-    <div style={styles.container}>
-      <div style={styles.header}>
-        <h1 style={styles.title}>ResumAI</h1>
-        <button style={styles.restartButton} onClick={() => {
-            document.cookie = "session_id=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/;"
-            localStorage.removeItem('session_id')
-            localStorage.removeItem('role_level')
-            navigate('/')
-                    }}>
-                Analyze Another
-        </button>
-      </div>
+    <PageShell>
+      <div className="mx-auto w-full max-w-4xl">
+        {/* Header */}
+        <div className="mb-6 flex items-center justify-between">
+          <h1 className="bg-gradient-to-r from-brand-600 to-[var(--color-accent-cyan)] bg-clip-text text-4xl font-extrabold tracking-tight text-transparent">
+            ResumAI
+          </h1>
+          <Button variant="ghost" onClick={restart}>
+            Analyze Another
+          </Button>
+        </div>
 
-      {/* Overall Score */}
-      <div style={styles.scoreCard}>
-        <h2 style={styles.scoreLabel}>Overall Score</h2>
-        <p style={styles.scoreNumber}>{analysis.overall_score}/100</p>
-        <p style={styles.recommendation}>
-          Hiring Recommendation:{' '}
-          <strong>{analysis.hiring_recommendation?.replace('_', ' ').toUpperCase()}</strong>
-        </p>
-        <p style={styles.recruiterImpression}>{analysis.recruiter_first_impression}</p>
-      </div>
+        <div className="mb-6">
+          <Stepper current={2} />
+        </div>
 
-      {/* Score Breakdown */}
-      <div style={styles.section}>
-        <h2 style={styles.sectionTitle}>Score Breakdown</h2>
-        <div style={styles.scoresGrid}>
-          {Object.entries(analysis.scores || {}).map(([key, value]) => (
-            <div key={key} style={styles.scoreItem}>
-              <p style={styles.scoreItemLabel}>
-                {key.replace(/_/g, ' ')}
-              </p>
-              <div style={styles.barTrack}>
-                <div
-                  style={{
-                    ...styles.barFill,
-                    width: `${value}%`,
-                    backgroundColor: (value as number) >= 70 ? '#22c55e' : (value as number) >= 50 ? '#f59e0b' : '#ef4444',
-                  }}
-                />
+        <div className="flex flex-col gap-8">
+        {/* Overall score */}
+        <GlassCard>
+          <div className="flex flex-col items-center gap-5 sm:flex-row sm:items-center sm:gap-8">
+            <ScoreRing value={overall} />
+            <div className="flex-1 text-center sm:text-left">
+              <div className="mb-2 flex flex-wrap items-center justify-center gap-3 sm:justify-start">
+                <span className="text-sm font-medium text-slate-500">Hiring recommendation</span>
+                <span
+                  className={
+                    'rounded-full px-3 py-1 text-xs font-bold uppercase tracking-wide ' +
+                    (RECOMMENDATION_STYLES[recoKey] || 'bg-slate-100 text-slate-600')
+                  }
+                >
+                  {recoKey?.replace(/_/g, ' ')}
+                </span>
               </div>
-              <p style={styles.scoreItemValue}>{value as number}</p>
+              <p className="text-base leading-relaxed text-slate-600">
+                {analysis.recruiter_first_impression}
+              </p>
             </div>
-          ))}
-        </div>
-      </div>
-
-      {/* Strengths and Weaknesses */}
-      <div style={styles.twoCol}>
-        <div style={styles.section}>
-          <h2 style={styles.sectionTitle}>Strengths</h2>
-          {analysis.strengths?.map((s: string, i: number) => (
-            <div key={i} style={styles.listItem}>
-              <span style={styles.green}>✓</span> {s}
-            </div>
-          ))}
-        </div>
-        <div style={styles.section}>
-          <h2 style={styles.sectionTitle}>Weaknesses</h2>
-          {analysis.weaknesses?.map((w: string, i: number) => (
-            <div key={i} style={styles.listItem}>
-              <span style={styles.red}>✗</span> {w}
-            </div>
-          ))}
-        </div>
-      </div>
-
-      {/* Green and Red Flags */}
-      <div style={styles.twoCol}>
-        <div style={styles.section}>
-          <h2 style={styles.sectionTitle}>Green Flags</h2>
-          {analysis.green_flags?.map((f: string, i: number) => (
-            <div key={i} style={styles.listItem}>
-              <span style={styles.green}>▲</span> {f}
-            </div>
-          ))}
-        </div>
-        <div style={styles.section}>
-          <h2 style={styles.sectionTitle}>Red Flags</h2>
-          {analysis.red_flags?.map((f: string, i: number) => (
-            <div key={i} style={styles.listItem}>
-              <span style={styles.red}>▼</span> {f}
-            </div>
-          ))}
-        </div>
-      </div>
-
-      {/* Missing Keywords */}
-      <div style={styles.section}>
-        <h2 style={styles.sectionTitle}>Missing Critical Keywords</h2>
-        <div style={styles.tagContainer}>
-          {analysis.keyword_analysis?.missing_critical_keywords?.map((k: string, i: number) => (
-            <span key={i} style={styles.tag}>{k}</span>
-          ))}
-        </div>
-      </div>
-
-      {/* Interview Readiness */}
-      <div style={styles.section}>
-        <h2 style={styles.sectionTitle}>Interview Readiness</h2>
-        <div style={styles.readinessGrid}>
-          {[
-            { label: 'Technical Screen', key: 'technical_screen_ready' },
-            { label: 'System Design', key: 'system_design_ready' },
-            { label: 'Behavioral', key: 'behavioral_ready' },
-          ].map(({ label, key }) => (
-            <div key={key} style={styles.readinessItem}>
-              <span style={{
-                ...styles.readinessBadge,
-                backgroundColor: analysis.interview_readiness?.[key] ? '#dcfce7' : '#fee2e2',
-                color: analysis.interview_readiness?.[key] ? '#16a34a' : '#dc2626',
-              }}>
-                {analysis.interview_readiness?.[key] ? '✓' : '✗'}
-              </span>
-              <span style={styles.readinessLabel}>{label}</span>
-            </div>
-          ))}
-        </div>
-        {analysis.interview_readiness?.notes && (
-          <p style={styles.readinessNotes}>{analysis.interview_readiness.notes}</p>
-        )}
-      </div>
-
-      {/* Improvements */}
-      <div style={styles.section}>
-        <h2 style={styles.sectionTitle}>Improvements</h2>
-        {analysis.improvements?.map((imp: any, i: number) => (
-          <div key={i} style={styles.improvementCard}>
-            <div style={styles.improvementHeader}>
-              <span style={{
-                ...styles.priorityBadge,
-                backgroundColor: imp.priority === 'high' ? '#fee2e2' : imp.priority === 'medium' ? '#fef9c3' : '#dcfce7',
-                color: imp.priority === 'high' ? '#dc2626' : imp.priority === 'medium' ? '#ca8a04' : '#16a34a',
-              }}>
-                {imp.priority?.toUpperCase()}
-              </span>
-              <span style={styles.categoryBadge}>{imp.category}</span>
-            </div>
-            <p style={styles.improvementSuggestion}>{imp.suggestion}</p>
-            {imp.reference_text && (
-              <p style={styles.referenceText}>"{imp.reference_text}"</p>
-            )}
-            {imp.example_rewrite && (
-              <p style={styles.exampleRewrite}>→ {imp.example_rewrite}</p>
-            )}
           </div>
-        ))}
+        </GlassCard>
+
+        {/* Score breakdown */}
+        <GlassCard>
+          <SectionTitle>Score Breakdown</SectionTitle>
+          <div className="flex flex-col gap-3.5">
+            {Object.entries(analysis.scores).map(([key, value]) => (
+              <div key={key} className="grid grid-cols-[9rem_1fr_2rem] items-center gap-3 sm:grid-cols-[12rem_1fr_2rem]">
+                <span className="text-sm capitalize text-slate-500 sm:text-base">
+                  {key.replace(/_/g, ' ')}
+                </span>
+                <div className="h-2 overflow-hidden rounded-full bg-slate-200/70">
+                  <div
+                    className={'h-full rounded-full transition-all duration-500 ' + scoreColor(value as number)}
+                    style={{ width: `${value}%` }}
+                  />
+                </div>
+                <span className="text-right text-sm font-semibold text-slate-600">{value as number}</span>
+              </div>
+            ))}
+          </div>
+        </GlassCard>
+
+        {/* Strengths / weaknesses */}
+        <div className="grid gap-8 md:grid-cols-2">
+          <GlassCard>
+            <SectionTitle>Strengths</SectionTitle>
+            <ul className="flex flex-col gap-3">
+              {analysis.strengths?.map((s: string, i: number) => (
+                <Bullet key={i} tone="green">{s}</Bullet>
+              ))}
+            </ul>
+          </GlassCard>
+          <GlassCard>
+            <SectionTitle>Weaknesses</SectionTitle>
+            <ul className="flex flex-col gap-3">
+              {analysis.weaknesses?.map((w: string, i: number) => (
+                <Bullet key={i} tone="red">{w}</Bullet>
+              ))}
+            </ul>
+          </GlassCard>
+        </div>
+
+        {/* Green / red flags */}
+        <div className="grid gap-8 md:grid-cols-2">
+          <GlassCard>
+            <SectionTitle>Green Flags</SectionTitle>
+            <ul className="flex flex-col gap-3">
+              {analysis.green_flags?.map((f: string, i: number) => (
+                <Bullet key={i} tone="green" icon="▲">{f}</Bullet>
+              ))}
+            </ul>
+          </GlassCard>
+          <GlassCard>
+            <SectionTitle>Red Flags</SectionTitle>
+            <ul className="flex flex-col gap-3">
+              {analysis.red_flags?.map((f: string, i: number) => (
+                <Bullet key={i} tone="red" icon="▼">{f}</Bullet>
+              ))}
+            </ul>
+          </GlassCard>
+        </div>
+
+        {/* Missing keywords */}
+        <GlassCard>
+          <SectionTitle>Missing Critical Keywords</SectionTitle>
+          <div className="flex flex-wrap gap-2">
+            {analysis.keyword_analysis?.missing_critical_keywords?.map((k: string, i: number) => (
+              <span key={i} className="rounded-full bg-red-50 px-3 py-1 text-sm font-medium text-red-600 ring-1 ring-red-100">
+                {k}
+              </span>
+            ))}
+          </div>
+        </GlassCard>
+
+        {/* Interview readiness */}
+        <GlassCard>
+          <SectionTitle>Interview Readiness</SectionTitle>
+          <div className="mb-4 flex flex-wrap gap-3">
+            {[
+              { label: 'Technical Screen', ok: readiness?.technical_screen_ready },
+              { label: 'System Design', ok: readiness?.system_design_ready },
+              { label: 'Behavioral', ok: readiness?.behavioral_ready },
+            ].map(({ label, ok }) => (
+              <div
+                key={label}
+                className={
+                  'flex items-center gap-2 rounded-xl px-4 py-2 text-base font-medium ' +
+                  (ok ? 'bg-emerald-50 text-emerald-700' : 'bg-red-50 text-red-600')
+                }
+              >
+                <span className="text-base">{ok ? '✓' : '✗'}</span>
+                {label}
+              </div>
+            ))}
+          </div>
+          {readiness?.notes && (
+            <p className="border-t border-slate-200/70 pt-3 text-sm italic leading-relaxed text-slate-500">
+              {readiness.notes}
+            </p>
+          )}
+        </GlassCard>
+
+        {/* Improvements */}
+        <GlassCard>
+          <SectionTitle>Improvements</SectionTitle>
+          <div className="flex flex-col gap-3">
+            {analysis.improvements?.map((imp, i: number) => (
+              <div key={i} className="rounded-2xl border border-white/70 bg-white/60 p-4">
+                <div className="mb-2 flex flex-wrap gap-2">
+                  <PriorityBadge priority={imp.priority} />
+                  <span className="rounded-full bg-slate-100 px-2.5 py-0.5 text-xs font-medium text-slate-500">
+                    {imp.category}
+                  </span>
+                </div>
+                <p className="text-base leading-relaxed text-slate-700">{imp.suggestion}</p>
+                {imp.reference_text && (
+                  <p className="mt-2 rounded-lg bg-slate-50 px-3 py-2 text-sm italic text-slate-500">
+                    "{imp.reference_text}"
+                  </p>
+                )}
+                {imp.example_rewrite && (
+                  <p className="mt-2 text-sm leading-relaxed text-brand-600">→ {imp.example_rewrite}</p>
+                )}
+              </div>
+            ))}
+          </div>
+        </GlassCard>
+        </div>
       </div>
-    </div>
+    </PageShell>
   )
 }
 
-const styles: { [key: string]: React.CSSProperties } = {
-  container: {
-    maxWidth: '800px',
-    margin: '0 auto',
-    padding: '32px 24px',
-  },
-  centered: {
-    minHeight: '100vh',
-    display: 'flex',
-    flexDirection: 'column',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: '30px',
-  },
-  header: {
-    display: 'flex',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: '16px',
-  },
-  title: {
-    fontSize: '100px',
-    fontWeight: '700',
-    color: '#2854ac',
-  },
-  restartButton: {
-    backgroundColor: 'transparent',
-    border: '1px solid #ddd',
-    borderRadius: '8px',
-    padding: '8px 20px',
-    cursor: 'pointer',
-    fontSize: '14px',
-    color: '#ddd',
-  },
-  scoreCard: {
-    backgroundColor: 'white',
-    borderRadius: '12px',
-    padding: '32px',
-    marginBottom: '24px',
-    boxShadow: '0 2px 12px rgba(0,0,0,0.08)',
-    textAlign: 'center',
-  },
-  scoreLabel: {
-    fontSize: '16px',
-    color: '#000000',
-    marginBottom: '16px',
-    fontWeight: '400',
-  },
-  scoreNumber: {
-    fontSize: '40px',
-    fontWeight: '700',
-    color: '#000000',
-    marginBottom: '16px',
-  },
-  recommendation: {
-    fontSize: '16px',
-    color: '#000000',
-    marginBottom: '16px',
-  },
-  recruiterImpression: {
-    fontSize: '14px',
-    color: '#666',
-    lineHeight: '1.6',
-    fontStyle: 'italic',
-  },
-  section: {
-    backgroundColor: 'white',
-    borderRadius: '12px',
-    padding: '24px',
-    marginBottom: '24px',
-    boxShadow: '0 2px 12px rgba(0,0,0,0.08)',
-  },
-  sectionTitle: {
-    fontSize: '18px',
-    fontWeight: '600',
-    color: '#1a1a1a',
-    marginBottom: '16px',
-  },
-  scoresGrid: {
-    display: 'flex',
-    flexDirection: 'column',
-    gap: '12px',
-  },
-  scoreItem: {
-    display: 'grid',
-    gridTemplateColumns: '200px 1fr 40px',
-    alignItems: 'center',
-    gap: '12px',
-  },
-  scoreItemLabel: {
-    fontSize: '13px',
-    color: '#444',
-    textTransform: 'capitalize',
-  },
-  barTrack: {
-    backgroundColor: '#f1f5f9',
-    borderRadius: '4px',
-    height: '8px',
-    overflow: 'hidden',
-  },
-  barFill: {
-    height: '8px',
-    borderRadius: '4px',
-    transition: 'width 0.3s ease',
-  },
-  scoreItemValue: {
-    fontSize: '13px',
-    color: '#666',
-    textAlign: 'right',
-  },
-  twoCol: {
-    display: 'grid',
-    gridTemplateColumns: '1fr 1fr',
-    gap: '24px',
-    marginBottom: '0',
-  },
-  listItem: {
-    fontSize: '14px',
-    color: '#444',
-    marginBottom: '10px',
-    lineHeight: '1.5',
-  },
-  green: {
-    color: '#22c55e',
-    fontWeight: '700',
-    marginRight: '6px',
-  },
-  red: {
-    color: '#ef4444',
-    fontWeight: '700',
-    marginRight: '6px',
-  },
-  tagContainer: {
-    display: 'flex',
-    flexWrap: 'wrap',
-    gap: '8px',
-  },
-  tag: {
-    backgroundColor: '#fee2e2',
-    color: '#dc2626',
-    padding: '4px 12px',
-    borderRadius: '20px',
-    fontSize: '13px',
-    fontWeight: '500',
-  },
-  improvementCard: {
-    border: '1px solid #e5e7eb',
-    borderRadius: '8px',
-    padding: '16px',
-    marginBottom: '12px',
-  },
-  improvementHeader: {
-    display: 'flex',
-    gap: '8px',
-    marginBottom: '8px',
-  },
-  priorityBadge: {
-    padding: '2px 10px',
-    borderRadius: '20px',
-    fontSize: '11px',
-    fontWeight: '600',
-  },
-  categoryBadge: {
-    backgroundColor: '#f1f5f9',
-    color: '#475569',
-    padding: '2px 10px',
-    borderRadius: '20px',
-    fontSize: '11px',
-    fontWeight: '500',
-  },
-  improvementSuggestion: {
-    fontSize: '14px',
-    color: '#1a1a1a',
-    marginBottom: '8px',
-    lineHeight: '1.6',
-  },
-  referenceText: {
-    fontSize: '13px',
-    color: '#666',
-    fontStyle: 'italic',
-    marginBottom: '6px',
-    backgroundColor: '#f9fafb',
-    padding: '8px 12px',
-    borderRadius: '4px',
-  },
-  exampleRewrite: {
-    fontSize: '13px',
-    color: '#2563eb',
-    lineHeight: '1.6',
-  },
-  readinessGrid: {
-    display: 'flex',
-    gap: '24px',
-    marginBottom: '16px',
-  },
-  readinessItem: {
-    display: 'flex',
-    alignItems: 'center',
-    gap: '8px',
-  },
-  readinessBadge: {
-    width: '28px',
-    height: '28px',
-    borderRadius: '50%',
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'center',
-    fontSize: '14px',
-    fontWeight: '700',
-  },
-  readinessLabel: {
-    fontSize: '14px',
-    color: '#444',
-  },
-  readinessNotes: {
-    fontSize: '13px',
-    color: '#666',
-    fontStyle: 'italic',
-    lineHeight: '1.6',
-    borderTop: '1px solid #f1f5f9',
-    paddingTop: '12px',
-    marginTop: '4px',
-  },
-  loadingText: {
-    fontSize: '20px',
-    fontWeight: '600',
-    color: '#1a1a1a',
-  },
-  loadingSubtext: {
-    fontSize: '14px',
-    color: '#666',
-  },
-  error: {
-    fontSize: '16px',
-    color: '#ef4444',
-  },
-  button: {
-    backgroundColor: '#2563eb',
-    color: 'white',
-    padding: '12px 32px',
-    borderRadius: '8px',
-    border: 'none',
-    fontSize: '16px',
-    cursor: 'pointer',
-  },
+function SectionTitle({ children }: { children: React.ReactNode }) {
+  return <h2 className="mb-5 text-xl font-bold text-slate-800">{children}</h2>
+}
+
+function Bullet({
+  children,
+  tone,
+  icon,
+}: {
+  children: React.ReactNode
+  tone: 'green' | 'red'
+  icon?: string
+}) {
+  const color = tone === 'green' ? 'text-emerald-500' : 'text-red-500'
+  const mark = icon ?? (tone === 'green' ? '✓' : '✗')
+  return (
+    <li className="flex gap-2 text-base leading-relaxed text-slate-600">
+      <span className={'font-bold ' + color}>{mark}</span>
+      <span>{children}</span>
+    </li>
+  )
+}
+
+function PriorityBadge({ priority }: { priority: string }) {
+  const styles: Record<string, string> = {
+    high: 'bg-red-100 text-red-700',
+    medium: 'bg-amber-100 text-amber-700',
+    low: 'bg-emerald-100 text-emerald-700',
+  }
+  return (
+    <span className={'rounded-full px-2.5 py-0.5 text-[11px] font-bold uppercase ' + (styles[priority] || 'bg-slate-100 text-slate-600')}>
+      {priority}
+    </span>
+  )
+}
+
+function ScoreRing({ value }: { value: number }) {
+  const color = value >= 70 ? '#10b981' : value >= 50 ? '#f59e0b' : '#ef4444'
+  return (
+    <div
+      className="relative flex h-32 w-32 shrink-0 items-center justify-center rounded-full"
+      style={{ background: `conic-gradient(${color} ${value * 3.6}deg, #e2e8f0 0deg)` }}
+    >
+      <div className="flex h-24 w-24 flex-col items-center justify-center rounded-full bg-white">
+        <span className="text-3xl font-extrabold text-slate-800">{value}</span>
+        <span className="text-[11px] font-medium uppercase tracking-wide text-slate-400">/ 100</span>
+      </div>
+    </div>
+  )
 }

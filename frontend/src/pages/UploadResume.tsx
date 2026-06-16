@@ -1,19 +1,19 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import axios from 'axios'
-
-const API_URL = 'https://resumai-production-c766.up.railway.app'
+import { API_URL } from '../lib/api'
+import PageShell from '../components/PageShell'
+import GlassCard from '../components/GlassCard'
+import Stepper from '../components/Stepper'
 
 export default function UploadResume() {
   const navigate = useNavigate()
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState('')
+  const [dragOver, setDragOver] = useState(false)
 
-  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0]
-    if (!file) return
-
-    if (!file.name.endsWith('.pdf')) {
+  const uploadFile = async (file: File) => {
+    if (!file.name.toLowerCase().endsWith('.pdf')) {
       setError('Only PDF files are supported')
       return
     }
@@ -25,102 +25,86 @@ export default function UploadResume() {
     formData.append('file', file)
 
     try {
-      const response =await axios.post(`${API_URL}/api/resume/upload-resume`, formData, {
+      const response = await axios.post(`${API_URL}/api/resume/upload-resume`, formData, {
         withCredentials: true,
       })
       localStorage.setItem('session_id', response.data.session_id)
       navigate('/job-description')
-    } catch (err) {
+    } catch {
       setError('Failed to upload resume. Please try again.')
     } finally {
       setIsLoading(false)
     }
   }
 
-  return (
-    <div style={styles.container}>
-      <div style={styles.card}>
-        <h1 style={styles.title}>Resumai</h1>
-        <p style={styles.subtitle}>AI-powered resume analyzer</p>
+  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (file) uploadFile(file)
+  }
 
-        <div style={styles.uploadBox}>
-          <p style={styles.uploadText}>Upload your resume to get started</p>
-          <label style={styles.uploadButton}>
-            {isLoading ? 'Uploading...' : 'Choose PDF'}
+  const handleDrop = (e: React.DragEvent) => {
+    e.preventDefault()
+    setDragOver(false)
+    const file = e.dataTransfer.files?.[0]
+    if (file) uploadFile(file)
+  }
+
+  return (
+    <PageShell centered>
+      <div className="w-full max-w-xl">
+        <div className="mb-8 text-center">
+          <h1 className="bg-gradient-to-r from-brand-600 to-[var(--color-accent-cyan)] bg-clip-text text-5xl font-extrabold tracking-tight text-transparent">
+            ResumAI
+          </h1>
+          <p className="mt-3 text-base text-slate-500">
+            AI-powered resume analyzer for tech roles
+          </p>
+        </div>
+
+        <div className="mb-6">
+          <Stepper current={0} />
+        </div>
+
+        <GlassCard>
+          <label
+            onDragOver={(e) => {
+              e.preventDefault()
+              setDragOver(true)
+            }}
+            onDragLeave={() => setDragOver(false)}
+            onDrop={handleDrop}
+            className={
+              'flex cursor-pointer flex-col items-center justify-center rounded-2xl border-2 border-dashed px-6 py-12 text-center transition-colors ' +
+              (dragOver
+                ? 'border-brand-500 bg-brand-50/60'
+                : 'border-slate-300 hover:border-brand-400 hover:bg-white/40')
+            }
+          >
+            <div className="mb-4 flex h-14 w-14 items-center justify-center rounded-full bg-gradient-to-br from-brand-500 to-[var(--color-accent-cyan)] text-2xl text-white shadow-[var(--shadow-glow)]">
+              ↑
+            </div>
+            <p className="text-base font-medium text-slate-700">
+              {isLoading ? 'Uploading…' : 'Drop your resume here'}
+            </p>
+            <p className="mt-1 text-sm text-slate-400">
+              or <span className="font-semibold text-brand-600">browse files</span> · PDF only
+            </p>
             <input
               type="file"
               accept=".pdf"
               onChange={handleFileUpload}
-              style={{ display: 'none' }}
+              className="hidden"
               disabled={isLoading}
             />
           </label>
-          <p style={styles.fileType}>PDF files only</p>
-        </div>
 
-        {error && <p style={styles.error}>{error}</p>}
+          {error && (
+            <p className="mt-4 rounded-lg bg-red-50 px-4 py-2 text-center text-sm text-red-600">
+              {error}
+            </p>
+          )}
+        </GlassCard>
       </div>
-    </div>
+    </PageShell>
   )
-}
-
-const styles = {
-  container: {
-    minHeight: '100vh',
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: '#f5f5f5',
-  },
-  card: {
-    backgroundColor: 'white',
-    borderRadius: '12px',
-    padding: '48px',
-    width: '100%',
-    maxWidth: '480px',
-    boxShadow: '0 2px 12px rgba(0,0,0,0.08)',
-    textAlign: 'center' as const,
-  },
-  title: {
-    fontSize: '32px',
-    fontWeight: '700',
-    color: '#1a1a1a',
-    marginBottom: '8px',
-  },
-  subtitle: {
-    fontSize: '16px',
-    color: '#666',
-    marginBottom: '40px',
-  },
-  uploadBox: {
-    border: '2px dashed #ddd',
-    borderRadius: '8px',
-    padding: '40px 24px',
-    marginBottom: '16px',
-  },
-  uploadText: {
-    fontSize: '16px',
-    color: '#444',
-    marginBottom: '20px',
-  },
-  uploadButton: {
-    display: 'inline-block',
-    backgroundColor: '#2563eb',
-    color: 'white',
-    padding: '12px 32px',
-    borderRadius: '8px',
-    cursor: 'pointer',
-    fontSize: '16px',
-    fontWeight: '500',
-  },
-  fileType: {
-    fontSize: '13px',
-    color: '#999',
-    marginTop: '12px',
-  },
-  error: {
-    color: '#ef4444',
-    fontSize: '14px',
-    marginTop: '12px',
-  },
 }

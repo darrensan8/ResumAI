@@ -16,30 +16,31 @@ export const mockAnalysis = {
     ats_compatibility: 71,
     role_level_fit: 76,
   },
-  score_rationale: {
-    experience_relevance: 'Internships align well with the target stack.',
-    technical_skills: 'Strong on frontend; backend depth is thinner than the JD asks for.',
-    impact_and_metrics: 'Several bullets lack quantified outcomes.',
-    system_design_signals: 'Little evidence of designing systems at scale.',
-    cs_fundamentals: 'DS&A visible via projects; OS/networking not mentioned.',
-    project_quality: 'Projects show real users and a deployed product.',
-    structure_and_readability: 'Clean, single-column, easy to scan.',
-    ats_compatibility: 'Mostly parseable; avoid the two-column skills table.',
-    role_level_fit: 'Reads as a strong entry-level candidate.',
-  },
   keyword_analysis: {
-    matched_keywords: ['React', 'TypeScript', 'REST APIs', 'PostgreSQL', 'Git'],
     missing_critical_keywords: ['Kubernetes', 'CI/CD', 'gRPC', 'Distributed systems'],
-    missing_nice_to_have_keywords: ['GraphQL', 'Redis', 'Terraform'],
-    overused_buzzwords: ['passionate', 'synergy'],
   },
-  impact_analysis: {
-    has_quantified_metrics: true,
-    metric_examples: ['Cut page load time by 35%'],
-    missing_metrics_opportunities: ['"Built internal dashboard" — add usage/adoption numbers'],
-    impact_quality: 'moderate',
-    feedback: 'Good start on metrics; roughly half the bullets are still task-oriented.',
+  tech_stack_analysis: {
+    languages: {
+      missing_from_jd: ['Go', 'Rust'],
+    },
+    frameworks_and_libraries: {
+      missing_from_jd: ['gRPC', 'Kafka'],
+    },
+    tools_and_platforms: {
+      missing_from_jd: ['Kubernetes', 'Terraform', 'Datadog'],
+    },
   },
+  ats_analysis: {
+    formatting_issues: [
+      'Two-column skills table may not parse cleanly',
+      'Skills listed inside a table cell rather than plain text',
+    ],
+    keyword_density_ok: true,
+    recommended_section_order: ['Summary', 'Skills', 'Experience', 'Projects', 'Education'],
+    file_format_notes: 'PDF is fine; avoid tables, multi-column layouts, and text in headers/footers.',
+  },
+  tailored_summary:
+    'Entry-level software engineer with shipped, real-world React + TypeScript products and two internships delivering measurable impact. Comfortable across the frontend stack with growing backend and API experience, and eager to deepen distributed-systems and CI/CD skills in a high-bar engineering team.',
   strengths: [
     'Deployed, real-world projects with measurable results',
     'Clean, ATS-friendly single-column layout',

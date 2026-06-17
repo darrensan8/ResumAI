@@ -33,6 +33,8 @@ def analyze_resume(resume_text: str, job_description: str, role_level: str = "in
     - staff/principal: Expect org-wide impact, technical vision, mentorship at scale
     Analyze across ALL of the following dimensions, then respond ONLY with a JSON object
     in exactly the format below. No preamble, no markdown fences, no trailing text.
+    For "tailored_summary", write a 2-3 sentence professional-summary line, tailored to this
+    job description, that the candidate could paste at the top of their resume.
     {{
         "overall_score": <0-100>,
         "scores": {{
@@ -46,83 +48,27 @@ def analyze_resume(resume_text: str, job_description: str, role_level: str = "in
             "ats_compatibility": <0-100>,
             "role_level_fit": <0-100>
         }},
-        "score_rationale": {{
-            "experience_relevance": "1-2 sentence justification",
-            "technical_skills": "1-2 sentence justification",
-            "impact_and_metrics": "1-2 sentence justification",
-            "system_design_signals": "1-2 sentence justification",
-            "cs_fundamentals": "1-2 sentence justification",
-            "project_quality": "1-2 sentence justification",
-            "structure_and_readability": "1-2 sentence justification",
-            "ats_compatibility": "1-2 sentence justification",
-            "role_level_fit": "1-2 sentence justification"
-        }},
         "keyword_analysis": {{
-            "matched_keywords": ["keyword1", "keyword2"],
-            "missing_critical_keywords": ["keyword1", "keyword2"],
-            "missing_nice_to_have_keywords": ["keyword1", "keyword2"],
-            "overused_buzzwords": ["buzzword1"]
+            "missing_critical_keywords": ["keyword1", "keyword2"]
         }},
         "tech_stack_analysis": {{
             "languages": {{
-                "present": ["lang1"],
-                "missing_from_jd": ["lang1"],
-                "inferred_proficiency": {{"lang1": "beginner|intermediate|advanced|expert"}}
+                "missing_from_jd": ["lang1"]
             }},
             "frameworks_and_libraries": {{
-                "present": ["framework1"],
                 "missing_from_jd": ["framework1"]
             }},
             "tools_and_platforms": {{
-                "present": ["tool1"],
                 "missing_from_jd": ["tool1"]
-            }},
-            "domains": {{
-                "present": ["e.g. distributed systems, ML, frontend, mobile"],
-                "missing_from_jd": ["domain1"]
             }}
         }},
-        "impact_analysis": {{
-            "has_quantified_metrics": true,
-            "metric_examples": ["e.g. reduced latency by 40%"],
-            "missing_metrics_opportunities": ["bullet point that should have a metric but doesnt"],
-            "impact_quality": "weak|moderate|strong",
-            "feedback": "overall feedback on how well impact is demonstrated"
-        }},
-        "experience_analysis": {{
-            "total_relevant_years": <number or null>,
-            "company_tier_signal": "tier1|tier2|tier3|startup|unknown",
-            "role_progression": "strong|moderate|flat|unclear",
-            "gaps_or_concerns": ["concern1"],
-            "standout_experiences": ["standout1"]
-        }},
-        "project_analysis": {{
-            "projects_present": true,
-            "project_quality_signals": ["signal1"],
-            "missing_signals": ["e.g. no mention of scale, no github link, no team size"],
-            "recommended_projects_to_add": ["e.g. a distributed system project, an open source contribution"]
-        }},
-        "cs_fundamentals_signals": {{
-            "data_structures_and_algorithms": "strong|moderate|weak|not_visible",
-            "system_design": "strong|moderate|weak|not_visible",
-            "os_concepts": "strong|moderate|weak|not_visible",
-            "networking": "strong|moderate|weak|not_visible",
-            "databases": "strong|moderate|weak|not_visible",
-            "notes": "brief overall note on fundamentals visibility"
-        }},
         "ats_analysis": {{
-            "score": <0-100>,
             "formatting_issues": ["issue1"],
             "keyword_density_ok": true,
             "recommended_section_order": ["Summary", "Skills", "Experience", "Projects", "Education"],
             "file_format_notes": "PDF preferred; avoid tables/columns/headers in footers"
         }},
-        "role_level_fit": {{
-            "assessed_level": "intern|entry|mid|senior|staff|principal",
-            "target_level": "{role_level}",
-            "fit": "under-leveled|well-matched|over-leveled",
-            "level_gap_notes": "explanation of gap if any"
-        }},
+        "tailored_summary": "2-3 sentence professional summary tailored to the job description",
         "red_flags": ["red flag 1", "red flag 2"],
         "green_flags": ["green flag 1", "green flag 2"],
         "strengths": ["strength1", "strength2"],
@@ -150,7 +96,7 @@ def analyze_resume(resume_text: str, job_description: str, role_level: str = "in
 
     message = client.messages.create(
         model="claude-sonnet-4-6",
-        max_tokens=8096,
+        max_tokens=4096,
         messages=[
             {"role": "user", "content": prompt}
         ]

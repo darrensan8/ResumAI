@@ -134,9 +134,27 @@ export default function Analysis() {
               <p className="text-base leading-relaxed text-slate-600">
                 {analysis.recruiter_first_impression}
               </p>
+              {analysis.hiring_recommendation_reason && (
+                <p className="mt-3 border-t border-slate-200/70 pt-3 text-sm italic leading-relaxed text-slate-500">
+                  {analysis.hiring_recommendation_reason}
+                </p>
+              )}
             </div>
           </div>
         </GlassCard>
+
+        {/* Tailored summary */}
+        {analysis.tailored_summary && (
+          <GlassCard>
+            <SectionTitle>Tailored Summary</SectionTitle>
+            <p className="mb-3 text-sm text-slate-400">
+              A job-tailored summary you can paste at the top of your resume.
+            </p>
+            <p className="rounded-2xl border border-white/70 bg-white/60 p-4 text-base leading-relaxed text-slate-700">
+              {analysis.tailored_summary}
+            </p>
+          </GlassCard>
+        )}
 
         {/* Score breakdown */}
         <GlassCard>
@@ -209,6 +227,77 @@ export default function Analysis() {
               </span>
             ))}
           </div>
+        </GlassCard>
+
+        {/* Tech-stack gaps */}
+        <GlassCard>
+          <SectionTitle>Tech Stack Gaps</SectionTitle>
+          <p className="mb-4 text-sm text-slate-400">
+            In the job description but missing from your resume.
+          </p>
+          <div className="flex flex-col gap-4">
+            {[
+              { label: 'Languages', items: analysis.tech_stack_analysis?.languages?.missing_from_jd },
+              { label: 'Frameworks & Libraries', items: analysis.tech_stack_analysis?.frameworks_and_libraries?.missing_from_jd },
+              { label: 'Tools & Platforms', items: analysis.tech_stack_analysis?.tools_and_platforms?.missing_from_jd },
+            ].map(({ label, items }) =>
+              items && items.length > 0 ? (
+                <div key={label}>
+                  <span className="mb-2 block text-sm font-semibold text-slate-500">{label}</span>
+                  <div className="flex flex-wrap gap-2">
+                    {items.map((t: string, i: number) => (
+                      <span key={i} className="rounded-full bg-red-50 px-3 py-1 text-sm font-medium text-red-600 ring-1 ring-red-100">
+                        {t}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              ) : null
+            )}
+          </div>
+        </GlassCard>
+
+        {/* ATS breakdown */}
+        <GlassCard>
+          <SectionTitle>ATS Breakdown</SectionTitle>
+          <div className="mb-4 flex flex-wrap gap-3">
+            <div
+              className={
+                'flex items-center gap-2 rounded-xl px-4 py-2 text-base font-medium ' +
+                (analysis.ats_analysis?.keyword_density_ok ? 'bg-emerald-50 text-emerald-700' : 'bg-red-50 text-red-600')
+              }
+            >
+              <span className="text-base">{analysis.ats_analysis?.keyword_density_ok ? '✓' : '✗'}</span>
+              Keyword density
+            </div>
+          </div>
+          {analysis.ats_analysis?.formatting_issues && analysis.ats_analysis.formatting_issues.length > 0 && (
+            <div className="mb-4">
+              <span className="mb-2 block text-sm font-semibold text-slate-500">Formatting issues</span>
+              <ul className="flex flex-col gap-3">
+                {analysis.ats_analysis.formatting_issues.map((issue: string, i: number) => (
+                  <Bullet key={i} tone="red">{issue}</Bullet>
+                ))}
+              </ul>
+            </div>
+          )}
+          {analysis.ats_analysis?.recommended_section_order && analysis.ats_analysis.recommended_section_order.length > 0 && (
+            <div className="mb-4">
+              <span className="mb-2 block text-sm font-semibold text-slate-500">Recommended section order</span>
+              <ol className="flex flex-wrap items-center gap-2 text-sm text-slate-600">
+                {analysis.ats_analysis.recommended_section_order.map((section: string, i: number) => (
+                  <li key={i} className="flex items-center gap-2">
+                    <span className="rounded-full bg-slate-100 px-3 py-1 font-medium">{i + 1}. {section}</span>
+                  </li>
+                ))}
+              </ol>
+            </div>
+          )}
+          {analysis.ats_analysis?.file_format_notes && (
+            <p className="border-t border-slate-200/70 pt-3 text-sm italic leading-relaxed text-slate-500">
+              {analysis.ats_analysis.file_format_notes}
+            </p>
+          )}
         </GlassCard>
 
         {/* Interview readiness */}

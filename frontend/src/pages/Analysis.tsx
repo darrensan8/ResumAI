@@ -138,13 +138,19 @@ export default function Analysis() {
     <PageShell>
       <div className="mx-auto w-full max-w-4xl">
         {/* Header */}
-        <div className="mb-6 flex items-center justify-between">
+        <div className="mb-6 flex flex-wrap items-center justify-between gap-3">
           <h1 className="bg-gradient-to-r from-brand-600 to-[var(--color-accent-cyan)] bg-clip-text text-4xl font-extrabold tracking-tight text-transparent">
             ResumAI
           </h1>
-          <Button variant="ghost" onClick={restart}>
-            Analyze Another
-          </Button>
+          <div className="flex items-center gap-2">
+            <Button variant="ghost" onClick={restart}>
+              Upload New Resume
+            </Button>
+            {/* Keeps the session's resume; only the job description is replaced. */}
+            <Button variant="ghost" onClick={() => navigate('/job-description')}>
+              Analyze Another Job Description
+            </Button>
+          </div>
         </div>
 
         <div className="mb-6">

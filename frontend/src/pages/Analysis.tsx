@@ -1,6 +1,5 @@
 import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
-import axios from 'axios'
 import { API_URL } from '../lib/api'
 import { mockAnalysis } from '../mocks/analysis'
 import PageShell from '../components/PageShell'
@@ -22,42 +21,79 @@ const RECOMMENDATION_STYLES: Record<string, string> = {
   strong_no: 'bg-red-100 text-red-700',
 }
 
+/**
+ * POST to the streaming analysis endpoint and dispatch its server-sent events.
+ * `section` events carry one finished field of the analysis ({ key, value }); a list that is
+ * still being written (e.g. improvements) is re-sent as it grows.
+ */
+async function streamAnalysis(
+  sessionId: string,
+  roleLevel: string,
+  signal: AbortSignal,
+  onSection: (key: string, value: unknown) => void
+) {
+  const response = await fetch(`${API_URL}/api/analysis/analyze-stream`, {
+    method: 'POST',
+    credentials: 'include',
+    headers: { 'Content-Type': 'application/json', 'X-Session-ID': sessionId },
+    body: JSON.stringify({ role_level: roleLevel }),
+    signal,
+  })
+  if (!response.ok || !response.body) throw new Error(`HTTP ${response.status}`)
+
+  const reader = response.body.pipeThrough(new TextDecoderStream()).getReader()
+  let buffer = ''
+  for (;;) {
+    const { value, done } = await reader.read()
+    if (done) break
+    buffer += value
+    let end
+    while ((end = buffer.indexOf('\n\n')) !== -1) {
+      const raw = buffer.slice(0, end)
+      buffer = buffer.slice(end + 2)
+      const event = raw.match(/^event: (.*)$/m)?.[1]
+      const data = JSON.parse(raw.match(/^data: (.*)$/m)?.[1] ?? '{}')
+      if (event === 'section') onSection(data.key, data.value)
+      else if (event === 'done') return
+      else if (event === 'error') throw new Error(data.detail)
+    }
+  }
+  throw new Error('Analysis stream ended early')
+}
+
 export default function Analysis() {
   const navigate = useNavigate()
-  const [analysis, setAnalysis] = useState<AnalysisData | null>(null)
-  const [isLoading, setIsLoading] = useState(true)
+  // Filled in section by section as the analysis streams in.
+  const [analysis, setAnalysis] = useState<Partial<AnalysisData> | null>(null)
+  const [isDone, setIsDone] = useState(false)
   const [error, setError] = useState('')
 
   useEffect(() => {
     // Dev-only: ?mock=1 renders fixture data with no backend/Claude call.
     if (new URLSearchParams(window.location.search).get('mock') === '1') {
       setAnalysis(mockAnalysis)
-      setIsLoading(false)
+      setIsDone(true)
       return
     }
 
-    const fetchAnalysis = async () => {
-      const sessionId = localStorage.getItem('session_id')
-      if (!sessionId) {
-        navigate('/')
-        return
-      }
-      try {
-        const roleLevel = localStorage.getItem('role_level') || 'entry'
-        const response = await axios.post(
-          `${API_URL}/api/analysis/analyze`,
-          { role_level: roleLevel },
-          { withCredentials: true, headers: { 'X-Session-ID': sessionId } }
-        )
-        setAnalysis(response.data)
-      } catch {
-        setError('Failed to analyze resume. Please try again.')
-      } finally {
-        setIsLoading(false)
-      }
+    const sessionId = localStorage.getItem('session_id')
+    if (!sessionId) {
+      navigate('/')
+      return
     }
+    const roleLevel = localStorage.getItem('role_level') || 'entry'
+    const controller = new AbortController()
 
-    fetchAnalysis()
+    streamAnalysis(sessionId, roleLevel, controller.signal, (key, value) =>
+      setAnalysis((prev) => ({ ...prev, [key]: value }))
+    )
+      .then(() => setIsDone(true))
+      .catch(() => {
+        if (!controller.signal.aborted) setError('Failed to analyze resume. Please try again.')
+      })
+
+    // Aborting cancels the backend's Claude call too (e.g. StrictMode's double-mounted effect).
+    return () => controller.abort()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
@@ -68,19 +104,10 @@ export default function Analysis() {
     navigate('/')
   }
 
-  if (isLoading) {
-    return (
-      <PageShell centered>
-        <div className="flex flex-col items-center gap-4">
-          <div className="h-12 w-12 animate-spin rounded-full border-4 border-brand-200 border-t-brand-600" />
-          <p className="text-lg font-semibold text-slate-700">Analyzing your resume…</p>
-          <p className="text-sm text-slate-400">This may take up to 30 seconds</p>
-        </div>
-      </PageShell>
-    )
-  }
+  // The headline card needs the score, which is the first field streamed.
+  const hasHeadline = analysis?.overall_score !== undefined
 
-  if (error) {
+  if (error && !hasHeadline) {
     return (
       <PageShell centered>
         <GlassCard className="text-center">
@@ -91,9 +118,19 @@ export default function Analysis() {
     )
   }
 
-  if (!analysis) return null
+  if (!analysis || !hasHeadline) {
+    return (
+      <PageShell centered>
+        <div className="flex flex-col items-center gap-4">
+          <div className="h-12 w-12 animate-spin rounded-full border-4 border-brand-200 border-t-brand-600" />
+          <p className="text-lg font-semibold text-slate-700">Analyzing your resume…</p>
+          <p className="text-sm text-slate-400">Your score will appear in a few seconds</p>
+        </div>
+      </PageShell>
+    )
+  }
 
-  const overall = analysis.overall_score
+  const overall = analysis.overall_score ?? 0
   const recoKey = analysis.hiring_recommendation
   const readiness = analysis.interview_readiness
 
@@ -125,7 +162,7 @@ export default function Analysis() {
                 <span
                   className={
                     'rounded-full px-3 py-1 text-xs font-bold uppercase tracking-wide ' +
-                    (RECOMMENDATION_STYLES[recoKey] || 'bg-slate-100 text-slate-600')
+                    (RECOMMENDATION_STYLES[recoKey ?? ''] || 'bg-slate-100 text-slate-600')
                   }
                 >
                   {recoKey?.replace(/_/g, ' ')}
@@ -157,6 +194,7 @@ export default function Analysis() {
         )}
 
         {/* Score breakdown */}
+        {analysis.scores && (
         <GlassCard>
           <SectionTitle>Score Breakdown</SectionTitle>
           <div className="flex flex-col gap-3.5">
@@ -176,8 +214,10 @@ export default function Analysis() {
             ))}
           </div>
         </GlassCard>
+        )}
 
         {/* Strengths / weaknesses */}
+        {analysis.strengths && (
         <div className="grid gap-8 md:grid-cols-2">
           <GlassCard>
             <SectionTitle>Strengths</SectionTitle>
@@ -196,8 +236,10 @@ export default function Analysis() {
             </ul>
           </GlassCard>
         </div>
+        )}
 
         {/* Green / red flags */}
+        {analysis.green_flags && (
         <div className="grid gap-8 md:grid-cols-2">
           <GlassCard>
             <SectionTitle>Green Flags</SectionTitle>
@@ -216,8 +258,10 @@ export default function Analysis() {
             </ul>
           </GlassCard>
         </div>
+        )}
 
         {/* Missing keywords */}
+        {analysis.keyword_analysis && (
         <GlassCard>
           <SectionTitle>Missing Critical Keywords</SectionTitle>
           <div className="flex flex-wrap gap-2">
@@ -228,8 +272,10 @@ export default function Analysis() {
             ))}
           </div>
         </GlassCard>
+        )}
 
         {/* Tech-stack gaps */}
+        {analysis.tech_stack_analysis && (
         <GlassCard>
           <SectionTitle>Tech Stack Gaps</SectionTitle>
           <p className="mb-4 text-sm text-slate-400">
@@ -256,8 +302,10 @@ export default function Analysis() {
             )}
           </div>
         </GlassCard>
+        )}
 
         {/* ATS breakdown */}
+        {analysis.ats_analysis && (
         <GlassCard>
           <SectionTitle>ATS Breakdown</SectionTitle>
           <div className="mb-4 flex flex-wrap gap-3">
@@ -299,8 +347,10 @@ export default function Analysis() {
             </p>
           )}
         </GlassCard>
+        )}
 
         {/* Interview readiness */}
+        {readiness && (
         <GlassCard>
           <SectionTitle>Interview Readiness</SectionTitle>
           <div className="mb-4 flex flex-wrap gap-3">
@@ -327,8 +377,10 @@ export default function Analysis() {
             </p>
           )}
         </GlassCard>
+        )}
 
         {/* Improvements */}
+        {analysis.improvements && analysis.improvements.length > 0 && (
         <GlassCard>
           <SectionTitle>Improvements</SectionTitle>
           <div className="flex flex-col gap-3">
@@ -353,6 +405,19 @@ export default function Analysis() {
             ))}
           </div>
         </GlassCard>
+        )}
+
+        {/* Streaming status */}
+        {error ? (
+          <p className="text-center text-base text-red-600">{error}</p>
+        ) : (
+          !isDone && (
+            <div className="flex items-center justify-center gap-3 text-sm text-slate-400">
+              <div className="h-4 w-4 animate-spin rounded-full border-2 border-brand-200 border-t-brand-600" />
+              Still analyzing…
+            </div>
+          )
+        )}
         </div>
       </div>
     </PageShell>

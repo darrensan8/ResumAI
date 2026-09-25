@@ -45,16 +45,22 @@ the prior resume/job-description/analysis for that session (upsert, not append).
 
 **Request flow.** `POST /api/resume/upload-resume` (PDF → text via pdfplumber, min 50 words)
 → `POST /api/job-description/upload-job-description` (text, min 50 words, requires an
-existing resume) → `POST /api/analysis/analyze` (requires both; calls Claude). Resume PDF
+existing resume) → `POST /api/analysis/analyze-stream` (requires both; calls Claude and
+streams server-sent events: one `section` event per finished top-level field, then `done` or
+`error`; the frontend uses this). `POST /api/analysis/analyze` returns the same analysis as
+one JSON response. Resume PDF
 bytes can be re-fetched via `GET /api/get-resume/get-resume`. Routers are registered in
 `backend/main.py`; each lives in `backend/app/routes/` and is mounted under `/api/<name>`.
 
-**The analysis core** is `backend/app/services/analysis.py`. It holds one giant prompt that
-pins the exact output JSON schema and calls `claude-sonnet-4-6`. The function strips
-optional ``` ```json ``` ``` fences and `json.loads` the result, raising `ValueError` on
-bad JSON (the route turns that into a 500). **The prompt's JSON shape, the SQLAlchemy
+**The analysis core** is `backend/app/services/analysis.py`. It holds one giant prompt
+(which includes today's date, so models don't flag recent experience as "future-dated")
+and calls `MODEL`/`EFFORT` (`claude-sonnet-5`, medium) with structured outputs:
+`ANALYSIS_SCHEMA` guarantees valid JSON, and its property order is the order sections
+stream in, so keep it matching the card order in `Analysis.tsx`. Refusals and `max_tokens`
+cut-offs raise `ValueError`. **The prompt's JSON example, `ANALYSIS_SCHEMA`, the SQLAlchemy
 models, and the frontend's `Analysis.tsx` rendering are tightly coupled** — changing a
-field in the prompt means updating all three. When touching Claude/model code, consult the
+field means updating all of them. `backend/scripts/benchmark_models.py` compares models on
+this exact request (speed, cost, JSON validity); it makes real, billed API calls. When touching Claude/model code, consult the
 `claude-api` skill for current model IDs and API usage rather than guessing.
 
 **Persistence.** Models in `backend/app/models/__init__.py`: `Resume` (stores both
@@ -64,9 +70,9 @@ auto-created at startup via `Base.metadata.create_all` — there are no migratio
 change requires manually altering the live DB.
 
 **Frontend.** Three pages (`UploadResume` → `UploadJobDescription` → `Analysis`) wired with
-react-router; `App.tsx` is a placeholder. The API base URL is **hardcoded** to the Railway
-production URL in each page (`const API_URL = '...'`), so `npm run dev` hits prod, not a
-local backend — change it in the page files to point at `http://localhost:8000`.
+react-router; `App.tsx` is a placeholder. The API base URL lives in `src/lib/api.ts` and
+defaults to the Railway production URL, so `npm run dev` hits prod unless you run it with
+`VITE_API_URL=http://localhost:8000`.
 
 **CORS** allow-list is hardcoded in `backend/main.py`; add new frontend origins there.
 

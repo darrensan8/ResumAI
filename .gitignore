@@ -13,3 +13,6 @@ services/cleanup.py
 node_modules/
 .next/
 
+
+# Model benchmark output
+backend/benchmark_results/

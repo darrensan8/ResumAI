@@ -64,6 +64,7 @@ Create a `.env` file in the `backend` folder:
 
 DATABASE_URL=your-supabase-connection-string
 ANTHROPIC_API_KEY=your-anthropic-key
+JWT_SECRET=any-long-random-string
 
 Run the backend:
 

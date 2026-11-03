@@ -1,4 +1,4 @@
-from sqlalchemy import Column, String, Text, LargeBinary, JSON, DateTime, Integer
+from sqlalchemy import Column, String, Text, LargeBinary, JSON, DateTime, Integer, ForeignKey
 from app.database import Base
 from sqlalchemy.sql import func
 
@@ -38,4 +38,24 @@ class Analytics(Base):
     session_id = Column(String, index=True)
     resume_length = Column(String, nullable=False)
     job_description_length = Column(String, nullable=False)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+class User(Base):
+    __tablename__ = "users"
+
+    id = Column(String, primary_key=True)
+    email = Column(String, unique=True, index=True, nullable=False)
+    password_hash = Column(String, nullable=False)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+class AnalysisHistory(Base):
+    """One row per finished analysis (append-only), so logged-in users can revisit past feedback."""
+    __tablename__ = "analysis_history"
+
+    id = Column(Integer, primary_key=True, index=True, autoincrement=True)
+    session_id = Column(String, index=True, nullable=False)
+    user_id = Column(String, ForeignKey("users.id"), index=True, nullable=True)
+    job_description = Column(Text, nullable=False)
+    role_level = Column(String, nullable=False)
+    analysis_data = Column(JSON, nullable=False)
     created_at = Column(DateTime(timezone=True), server_default=func.now())

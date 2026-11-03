@@ -36,7 +36,7 @@ def _obj(properties: dict) -> dict:
 _MISSING = _obj({"missing_from_jd": _STR_LIST})
 
 # Property order is the order Claude writes the sections in, so it matches the order
-# Analysis.tsx renders them: headline first, the long improvements list last.
+# AnalysisView.tsx renders them: headline first, the long improvements list last.
 ANALYSIS_SCHEMA = _obj({
     "overall_score": {"type": "integer"},
     "hiring_recommendation": {"type": "string", "enum": ["strong_yes", "yes", "maybe", "no", "strong_no"]},

@@ -4,8 +4,9 @@ from fastapi.concurrency import run_in_threadpool
 from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
 from app.database import get_db, SessionLocal
-from app.models import Resume, JobDescription, AnalysisScores, ResumeFeedback
+from app.models import Resume, JobDescription, AnalysisScores, ResumeFeedback, AnalysisHistory, User
 from app.services.analysis import analyze_resume, stream_analysis
+from app.services.auth import get_optional_user
 from pydantic import BaseModel
 
 router = APIRouter()
@@ -30,7 +31,14 @@ def load_inputs(db: Session, session_id: str | None, x_session_id: str | None) -
     return effective_session_id, resume, job_desc
 
 
-def save_analysis(db: Session, effective_session_id: str, analysis: dict) -> None:
+def save_analysis(
+    db: Session,
+    effective_session_id: str,
+    analysis: dict,
+    job_description: str,
+    role_level: str,
+    user_id: str | None,
+) -> None:
     existing_score = db.query(AnalysisScores).filter(AnalysisScores.session_id == effective_session_id).first()
     if existing_score:
         existing_score.analysis_data = analysis
@@ -51,6 +59,15 @@ def save_analysis(db: Session, effective_session_id: str, analysis: dict) -> Non
             improvements_data=analysis.get("improvements", [])
         ))
 
+    # Append-only history; anonymous rows (user_id None) are claimed on login/signup.
+    db.add(AnalysisHistory(
+        session_id=effective_session_id,
+        user_id=user_id,
+        job_description=job_description,
+        role_level=role_level,
+        analysis_data=analysis,
+    ))
+
     db.commit()
 
 
@@ -59,6 +76,7 @@ async def analyze(
     request: AnalysisRequest,
     session_id: str = Cookie(default=None),
     x_session_id: str = Header(default=None),
+    user: User | None = Depends(get_optional_user),
     db: Session = Depends(get_db)
 ):
     effective_session_id, resume, job_desc = load_inputs(db, session_id, x_session_id)
@@ -70,7 +88,10 @@ async def analyze(
     except ValueError as e:
         raise HTTPException(status_code=500, detail=str(e))
 
-    save_analysis(db, effective_session_id, analysis)
+    save_analysis(
+        db, effective_session_id, analysis,
+        job_desc.job_description, request.role_level, user.id if user else None,
+    )
     return analysis
 
 
@@ -78,11 +99,11 @@ def _sse(event: str, data) -> str:
     return f"event: {event}\ndata: {json.dumps(data)}\n\n"
 
 
-def _save_in_new_session(effective_session_id: str, analysis: dict) -> None:
+def _save_in_new_session(effective_session_id: str, analysis: dict, *args) -> None:
     # The request-scoped session may already be closed while the stream is still open.
     db = SessionLocal()
     try:
-        save_analysis(db, effective_session_id, analysis)
+        save_analysis(db, effective_session_id, analysis, *args)
     finally:
         db.close()
 
@@ -92,11 +113,13 @@ async def analyze_stream(
     request: AnalysisRequest,
     session_id: str = Cookie(default=None),
     x_session_id: str = Header(default=None),
+    user: User | None = Depends(get_optional_user),
     db: Session = Depends(get_db)
 ):
     """Server-sent events: one `section` event per finished field, then `done` or `error`."""
     effective_session_id, resume, job_desc = load_inputs(db, session_id, x_session_id)
     resume_text, job_description = resume.resume_text, job_desc.job_description
+    user_id = user.id if user else None
 
     async def events():
         try:
@@ -105,7 +128,10 @@ async def analyze_stream(
                     key, value = payload
                     yield _sse("section", {"key": key, "value": value})
                 else:
-                    await run_in_threadpool(_save_in_new_session, effective_session_id, payload)
+                    await run_in_threadpool(
+                        _save_in_new_session, effective_session_id, payload,
+                        job_description, request.role_level, user_id,
+                    )
                     yield _sse("done", {})
         except Exception as e:
             yield _sse("error", {"detail": str(e) if isinstance(e, ValueError) else "Analysis failed."})

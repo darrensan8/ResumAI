@@ -1,4 +1,5 @@
 import type { ReactNode } from 'react'
+import AccountButton from './AccountButton'
 
 type PageShellProps = {
   children: ReactNode
@@ -8,7 +9,7 @@ type PageShellProps = {
 
 /**
  * Full-height gradient backdrop with soft animated color blobs.
- * Wraps every page so the brand background is consistent.
+ * Wraps every page so the brand background (and the top-right account button) is consistent.
  */
 export default function PageShell({ children, centered = false }: PageShellProps) {
   return (
@@ -18,9 +19,13 @@ export default function PageShell({ children, centered = false }: PageShellProps
       <div className="pointer-events-none absolute top-1/4 -right-40 h-[34rem] w-[34rem] rounded-full bg-[var(--color-accent-cyan)]/35 blur-3xl" />
       <div className="pointer-events-none absolute -bottom-44 left-1/4 h-[32rem] w-[32rem] rounded-full bg-[var(--color-accent-sky)]/35 blur-3xl" />
 
+      <div className="absolute right-4 top-[calc(env(safe-area-inset-top,0px)+1rem)] z-20 sm:right-6">
+        <AccountButton />
+      </div>
+
       <div
         className={
-          'relative z-10 mx-auto flex min-h-screen w-full max-w-5xl flex-col px-5 py-10 ' +
+          'relative z-10 mx-auto flex min-h-screen w-full max-w-5xl flex-col px-5 pt-20 pb-10 ' +
           (centered ? 'items-center justify-center' : '')
         }
       >

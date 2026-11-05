@@ -4,9 +4,7 @@ import { API_URL } from '../lib/api'
 import { mockAnalysis } from '../mocks/analysis'
 import { authHeaders } from '../lib/auth'
 import PageShell from '../components/PageShell'
-import GlassCard from '../components/GlassCard'
 import Button from '../components/Button'
-import Stepper from '../components/Stepper'
 import AnalysisView, { type AnalysisData } from '../components/AnalysisView'
 
 /**
@@ -52,7 +50,7 @@ async function streamAnalysis(
 export default function Analysis() {
   const navigate = useNavigate()
   // Filled in section by section as the analysis streams in.
-  const [analysis, setAnalysis] = useState<Partial<AnalysisData> | null>(null)
+  const [analysis, setAnalysis] = useState<Partial<AnalysisData>>({})
   const [isDone, setIsDone] = useState(false)
   const [error, setError] = useState('')
 
@@ -76,7 +74,7 @@ export default function Analysis() {
     )
       .then(() => setIsDone(true))
       .catch(() => {
-        if (!controller.signal.aborted) setError('Failed to analyze resume. Please try again.')
+        if (!controller.signal.aborted) setError('The review stopped before it finished. Start over to try again')
       })
 
     // Aborting cancels the backend's Claude call too (e.g. StrictMode's double-mounted effect).
@@ -91,71 +89,54 @@ export default function Analysis() {
     navigate('/')
   }
 
-  // The headline card needs the score, which is the first field streamed.
-  const hasHeadline = analysis?.overall_score !== undefined
-
-  if (error && !hasHeadline) {
-    return (
-      <PageShell centered>
-        <GlassCard className="text-center">
-          <p className="mb-5 text-base text-red-600">{error}</p>
-          <Button onClick={restart}>Start Over</Button>
-        </GlassCard>
-      </PageShell>
-    )
-  }
-
-  if (!analysis || !hasHeadline) {
-    return (
-      <PageShell centered>
-        <div className="flex flex-col items-center gap-4">
-          <div className="h-12 w-12 animate-spin rounded-full border-4 border-brand-200 border-t-brand-600" />
-          <p className="text-lg font-semibold text-slate-700">Analyzing your resume…</p>
-          <p className="text-sm text-slate-400">Your score will appear in a few seconds</p>
-        </div>
-      </PageShell>
-    )
-  }
+  const streaming = !isDone && !error
+  const started = analysis.recruiter_first_impression !== undefined
 
   return (
-    <PageShell>
-      <div className="mx-auto w-full max-w-4xl">
-        {/* Header */}
-        <div className="mb-6 flex flex-wrap items-center justify-between gap-3">
-          <h1 className="bg-gradient-to-r from-brand-600 to-[var(--color-accent-cyan)] bg-clip-text text-4xl font-extrabold tracking-tight text-transparent">
-            ResumAI
-          </h1>
-          <div className="flex items-center gap-2">
-            <Button variant="ghost" onClick={restart}>
-              Upload New Resume
-            </Button>
+    <PageShell width="wide">
+      <AnalysisView
+        analysis={analysis}
+        streaming={streaming}
+        actions={
+          <>
             {/* Keeps the session's resume; only the job description is replaced. */}
-            <Button variant="ghost" onClick={() => navigate('/job-description')}>
-              Analyze Another Job Description
+            <Button onClick={() => navigate('/job-description')}>Analyze another job</Button>
+            <Button variant="quiet" onClick={restart}>
+              Upload a new resume
             </Button>
-          </div>
-        </div>
-
-        <div className="mb-6">
-          <Stepper current={2} />
-        </div>
-
-        <div className="flex flex-col gap-8">
-        <AnalysisView analysis={analysis} />
-
-        {/* Streaming status */}
-        {error ? (
-          <p className="text-center text-base text-red-600">{error}</p>
-        ) : (
-          !isDone && (
-            <div className="flex items-center justify-center gap-3 text-sm text-slate-400">
-              <div className="h-4 w-4 animate-spin rounded-full border-2 border-brand-200 border-t-brand-600" />
-              Still analyzing…
+          </>
+        }
+        placeholder={
+          !error && (
+            <div className="px-6 py-16 sm:px-10">
+              <p className="font-serif text-2xl text-ink">Reading your resume against the job</p>
+              <p className="mt-2 text-[15px] text-ink-2">The score lands first, then each section as it’s written</p>
             </div>
           )
-        )}
-        </div>
-      </div>
+        }
+        footer={
+          error ? (
+            <div className={'px-6 sm:px-10 ' + (started ? 'border-t border-line py-6' : 'py-16')}>
+              <div className="flex flex-wrap items-center justify-between gap-4">
+                <p role="alert" className="text-[15px] text-pen">
+                  {error}
+                </p>
+                <Button variant="secondary" onClick={restart}>
+                  Start over
+                </Button>
+              </div>
+            </div>
+          ) : (
+            streaming &&
+            started && (
+              <p className="flex items-center gap-2 border-t border-line px-6 py-6 text-sm text-ink-3 sm:px-10">
+                <span className="animate-live h-1.5 w-1.5 rounded-full bg-blue-ink" aria-hidden="true" />
+                Still writing the rest of the review
+              </p>
+            )
+          )
+        }
+      />
     </PageShell>
   )
 }

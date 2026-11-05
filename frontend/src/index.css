@@ -1,29 +1,34 @@
 @import "tailwindcss";
 
-/* ResumAI gradient / glass design tokens */
+/*
+ * "Paper & red pen" — a printed resume marked up by a reviewer.
+ * Warm paper neutrals, black ink, blue ink for rewrites, red pen for problems.
+ */
 @theme {
-  --font-sans: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  --font-sans: "Instrument Sans", ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  --font-serif: "Newsreader", ui-serif, Georgia, serif;
 
-  /* Brand accent (indigo → violet) */
-  --color-brand-50: #eef2ff;
-  --color-brand-100: #e0e7ff;
-  --color-brand-300: #a5b4fc;
-  --color-brand-400: #818cf8;
-  --color-brand-500: #6366f1;
-  --color-brand-600: #4f46e5;
-  --color-brand-700: #4338ca;
+  /* Neutral ramp (warm) */
+  --color-desk: #f7f4ee;
+  --color-paper: #fdfbf7;
+  --color-raised: #efe9df;
+  --color-ink: #1f1b16;
+  --color-ink-2: #5e554a;
+  --color-ink-3: #7b7266;
+  --color-line: rgb(31 27 22 / 0.08);
+  --color-line-strong: rgb(31 27 22 / 0.16);
 
-  /* Accent secondary for gradients (cyan/sky) */
-  --color-accent-sky: #38bdf8;
-  --color-accent-cyan: #06b6d4;
+  /* Accent: blue ink */
+  --color-blue-ink: #2346a0;
+  --color-blue-ink-hover: #1c3a86;
 
-  /* Glass surface */
-  --color-glass: rgb(255 255 255 / 0.62);
-  --color-glass-border: rgb(255 255 255 / 0.75);
+  /* Semantic, toned to the paper */
+  --color-pen: #b4372f;
+  --color-moss: #3d7a4f;
+  --color-ochre: #9a6a12;
 
-  --radius-glass: 1.25rem;
-  --shadow-glass: 0 8px 32px rgb(8 47 73 / 0.14);
-  --shadow-glow: 0 0 0 1px rgb(99 102 241 / 0.15), 0 12px 40px rgb(99 102 241 / 0.25);
+  --ease-out: cubic-bezier(0.22, 1, 0.36, 1);
+  --shadow-sheet: 0 1px 2px rgb(31 27 22 / 0.04), 0 8px 24px rgb(31 27 22 / 0.05);
 }
 
 * {
@@ -37,16 +42,68 @@ body,
 }
 
 body {
+  margin: 0;
+  background: var(--color-desk);
   font-family: var(--font-sans);
-  color: #1e1b2e;
+  color: var(--color-ink);
   -webkit-font-smoothing: antialiased;
 }
 
-/* Frosted glass surface utility */
-@utility glass {
-  background: var(--color-glass);
-  border: 1px solid var(--color-glass-border);
-  -webkit-backdrop-filter: blur(20px) saturate(160%);
-  backdrop-filter: blur(20px) saturate(160%);
-  box-shadow: var(--shadow-glass);
+::selection {
+  background: rgb(35 70 160 / 0.16);
+}
+
+/* One entrance: a short fade and rise, used as each streamed section lands. */
+@keyframes rise {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@utility animate-rise {
+  animation: rise 400ms var(--ease-out) both;
+}
+
+/* Score bars grow from the left on first paint (transform only). */
+@keyframes grow {
+  from {
+    transform: scaleX(0);
+  }
+  to {
+    transform: scaleX(1);
+  }
+}
+
+@utility animate-grow {
+  transform-origin: left center;
+  animation: grow 500ms var(--ease-out) both;
+}
+
+/* The only looping motion: the dot on the section currently being written. */
+@keyframes live {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.3;
+  }
+}
+
+@utility animate-live {
+  animation: live 1.4s ease-in-out infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation: none !important;
+    transition: none !important;
+  }
 }

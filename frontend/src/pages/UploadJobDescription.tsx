@@ -2,26 +2,28 @@ import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import axios from 'axios'
 import { API_URL } from '../lib/api'
-import PageShell from '../components/PageShell'
-import GlassCard from '../components/GlassCard'
-import Stepper from '../components/Stepper'
+import StepLayout from '../components/StepLayout'
+import Panel from '../components/Panel'
 import Button from '../components/Button'
+import FormError from '../components/FormError'
 
 const ROLE_LEVELS = ['intern', 'entry', 'mid', 'senior', 'staff', 'principal']
+const MIN_WORDS = 50
 
 export default function UploadJobDescription() {
   const navigate = useNavigate()
   const [jobDescription, setJobDescription] = useState('')
-  const [roleLevel, setRoleLevel] = useState('entry')
+  const [roleLevel, setRoleLevel] = useState(() => localStorage.getItem('role_level') || 'entry')
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState('')
 
   const wordCount = jobDescription.trim().split(/\s+/).filter(Boolean).length
-  const ready = wordCount >= 50 && !isLoading
+  const enough = wordCount >= MIN_WORDS
+  const ready = enough && !isLoading
 
   const handleSubmit = async () => {
-    if (wordCount < 50) {
-      setError('Job description must be at least 50 words.')
+    if (!enough) {
+      setError(`The job description needs at least ${MIN_WORDS} words`)
       return
     }
 
@@ -39,75 +41,71 @@ export default function UploadJobDescription() {
       localStorage.setItem('role_level', roleLevel)
       navigate('/analysis')
     } catch {
-      setError('Failed to upload job description. Please try again.')
+      setError('Couldn’t save the job description. Try again')
     } finally {
       setIsLoading(false)
     }
   }
 
   return (
-    <PageShell centered>
-      <div className="w-full max-w-2xl">
-        <div className="mb-8 text-center">
-          <h1 className="bg-gradient-to-r from-brand-600 to-[var(--color-accent-cyan)] bg-clip-text text-4xl font-extrabold tracking-tight text-transparent">
-            ResumAI
-          </h1>
-          <p className="mt-2 text-base text-slate-500">Paste the job description to compare against</p>
-        </div>
-
-        <div className="mb-6">
-          <Stepper current={1} />
-        </div>
-
-        <GlassCard>
-          <div className="mb-4">
-            <label className="mb-2 block text-sm font-semibold text-slate-600">Target role level</label>
-            <div className="flex flex-wrap gap-1.5">
-              {ROLE_LEVELS.map((level) => (
+    <StepLayout
+      step={1}
+      title="Paste the job you’re applying for"
+      lead="The review scores your resume against this posting and the level you pick, so paste the whole thing, requirements included"
+    >
+      <Panel>
+        <fieldset className="m-0 border-0 p-0">
+          <legend className="mb-2 text-sm text-ink-2">Role level</legend>
+          <div className="grid grid-cols-3 gap-1 rounded-[10px] bg-raised p-1 sm:grid-cols-6">
+            {ROLE_LEVELS.map((level) => {
+              const selected = roleLevel === level
+              return (
                 <button
                   key={level}
+                  type="button"
+                  aria-pressed={selected}
                   onClick={() => setRoleLevel(level)}
                   className={
-                    'rounded-full px-3 py-1.5 text-xs font-medium capitalize transition-colors ' +
-                    (roleLevel === level
-                      ? 'bg-brand-600 text-white shadow-sm'
-                      : 'bg-white/70 text-slate-500 hover:bg-white')
+                    'h-8 rounded-md text-sm capitalize transition-colors duration-150 ' +
+                    'focus-visible:outline-2 focus-visible:outline-blue-ink ' +
+                    (selected
+                      ? 'border border-line-strong bg-paper font-medium text-ink'
+                      : 'text-ink-2 hover:text-ink')
                   }
                 >
                   {level}
                 </button>
-              ))}
-            </div>
+              )
+            })}
           </div>
+        </fieldset>
 
-          <textarea
-            className="h-72 w-full resize-y rounded-xl border border-white/70 bg-white/70 p-4 text-sm text-slate-700 outline-none transition focus:border-brand-400 focus:ring-2 focus:ring-brand-200 placeholder:text-slate-400"
-            placeholder="Copy and paste the full job description here…"
-            value={jobDescription}
-            onChange={(e) => setJobDescription(e.target.value)}
-          />
+        <label htmlFor="jd" className="mt-6 mb-2 block text-sm text-ink-2">
+          Job description
+        </label>
+        <textarea
+          id="jd"
+          className={
+            'h-72 w-full resize-y rounded-lg border border-line-strong bg-paper p-4 text-[15px] leading-6 text-ink ' +
+            'outline-none transition-[border-color,box-shadow] duration-150 placeholder:text-ink-3 ' +
+            'focus:border-blue-ink focus:shadow-[0_0_0_3px_rgb(35_70_160_/_0.12)]'
+          }
+          placeholder="Paste the full posting"
+          value={jobDescription}
+          onChange={(e) => setJobDescription(e.target.value)}
+        />
 
-          <div className="mt-4 flex items-center justify-between gap-4">
-            <span
-              className={
-                'text-xs font-medium ' +
-                (wordCount >= 50 ? 'text-emerald-600' : 'text-slate-400')
-              }
-            >
-              {wordCount} / 50 words minimum
-            </span>
-            <Button onClick={handleSubmit} disabled={!ready}>
-              {isLoading ? 'Analyzing…' : 'Analyze Resume →'}
-            </Button>
-          </div>
+        <div className="mt-4 flex items-center justify-between gap-4">
+          <span className={'text-sm tabular-nums ' + (enough ? 'text-moss' : 'text-ink-3')}>
+            {enough ? `${wordCount} words` : `${wordCount} of ${MIN_WORDS} words`}
+          </span>
+          <Button onClick={handleSubmit} disabled={!ready}>
+            {isLoading ? 'Saving…' : 'Review my resume'}
+          </Button>
+        </div>
 
-          {error && (
-            <p className="mt-4 rounded-lg bg-red-50 px-4 py-2 text-center text-sm text-red-600">
-              {error}
-            </p>
-          )}
-        </GlassCard>
-      </div>
-    </PageShell>
+        {error && <FormError>{error}</FormError>}
+      </Panel>
+    </StepLayout>
   )
 }

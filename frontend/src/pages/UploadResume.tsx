@@ -1,10 +1,12 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import axios from 'axios'
+import { FileUp } from 'lucide-react'
 import { API_URL } from '../lib/api'
-import PageShell from '../components/PageShell'
-import GlassCard from '../components/GlassCard'
-import Stepper from '../components/Stepper'
+import StepLayout from '../components/StepLayout'
+import Panel from '../components/Panel'
+import FormError from '../components/FormError'
+import Redline from '../components/analysis/Redline'
 
 export default function UploadResume() {
   const navigate = useNavigate()
@@ -31,7 +33,7 @@ export default function UploadResume() {
       localStorage.setItem('session_id', response.data.session_id)
       navigate('/job-description')
     } catch {
-      setError('Failed to upload resume. Please try again.')
+      setError('Couldn’t upload that resume. Try again, or check that the PDF has selectable text')
     } finally {
       setIsLoading(false)
     }
@@ -50,61 +52,60 @@ export default function UploadResume() {
   }
 
   return (
-    <PageShell centered>
-      <div className="w-full max-w-xl">
-        <div className="mb-8 text-center">
-          <h1 className="bg-gradient-to-r from-brand-600 to-[var(--color-accent-cyan)] bg-clip-text text-5xl font-extrabold tracking-tight text-transparent">
-            ResumAI
-          </h1>
-          <p className="mt-3 text-base text-slate-500">
-            AI-powered resume analyzer for tech roles
+    <StepLayout
+      step={0}
+      title="Read your resume the way a recruiter will"
+      lead="Upload a PDF, paste the job you want, and get a scored review with rewrites for your weakest lines"
+      aside={<SamplePreview />}
+    >
+      <Panel className="p-3">
+        <label
+          onDragOver={(e) => {
+            e.preventDefault()
+            setDragOver(true)
+          }}
+          onDragLeave={() => setDragOver(false)}
+          onDrop={handleDrop}
+          className={
+            'flex min-h-80 cursor-pointer flex-col items-center justify-center rounded-xl border border-dashed px-6 py-12 text-center ' +
+            'transition-colors duration-150 has-[:focus-visible]:outline-2 has-[:focus-visible]:outline-blue-ink ' +
+            (dragOver
+              ? 'border-blue-ink bg-raised'
+              : 'border-line-strong hover:bg-raised/60') +
+            (isLoading ? ' pointer-events-none' : '')
+          }
+        >
+          <FileUp size={24} strokeWidth={1.5} className="mb-4 text-ink-3" />
+          <p className="text-base font-medium text-ink">
+            {isLoading ? 'Uploading your resume…' : 'Drop your resume PDF'}
           </p>
-        </div>
+          <p className="mt-1 text-sm text-ink-2">
+            or <span className="text-blue-ink underline decoration-blue-ink/30 underline-offset-4">browse files</span>
+          </p>
+          <p className="mt-6 text-xs text-ink-3">PDF with selectable text, at least 50 words</p>
+          <input
+            type="file"
+            accept=".pdf,application/pdf"
+            onChange={handleFileUpload}
+            className="sr-only"
+            disabled={isLoading}
+          />
+        </label>
+      </Panel>
+      {error && <FormError>{error}</FormError>}
+    </StepLayout>
+  )
+}
 
-        <div className="mb-6">
-          <Stepper current={0} />
-        </div>
-
-        <GlassCard>
-          <label
-            onDragOver={(e) => {
-              e.preventDefault()
-              setDragOver(true)
-            }}
-            onDragLeave={() => setDragOver(false)}
-            onDrop={handleDrop}
-            className={
-              'flex cursor-pointer flex-col items-center justify-center rounded-2xl border-2 border-dashed px-6 py-12 text-center transition-colors ' +
-              (dragOver
-                ? 'border-brand-500 bg-brand-50/60'
-                : 'border-slate-300 hover:border-brand-400 hover:bg-white/40')
-            }
-          >
-            <div className="mb-4 flex h-14 w-14 items-center justify-center rounded-full bg-gradient-to-br from-brand-500 to-[var(--color-accent-cyan)] text-2xl text-white shadow-[var(--shadow-glow)]">
-              ↑
-            </div>
-            <p className="text-base font-medium text-slate-700">
-              {isLoading ? 'Uploading…' : 'Drop your resume here'}
-            </p>
-            <p className="mt-1 text-sm text-slate-400">
-              or <span className="font-semibold text-brand-600">browse files</span> · PDF only
-            </p>
-            <input
-              type="file"
-              accept=".pdf"
-              onChange={handleFileUpload}
-              className="hidden"
-              disabled={isLoading}
-            />
-          </label>
-
-          {error && (
-            <p className="mt-4 rounded-lg bg-red-50 px-4 py-2 text-center text-sm text-red-600">
-              {error}
-            </p>
-          )}
-        </GlassCard>
-      </div>
-    </PageShell>
+/** What the review produces: one of its rewrites, shown before upload. */
+function SamplePreview() {
+  return (
+    <div className="max-w-[30rem] border-t border-line pt-6">
+      <p className="mb-3 text-[13px] text-ink-3">From a sample review · High priority · Impact</p>
+      <Redline
+        original="Built an internal dashboard for the analytics team."
+        rewrite="Built an internal analytics dashboard adopted by 40+ employees, cutting weekly reporting time by ~6 hours."
+      />
+    </div>
   )
 }

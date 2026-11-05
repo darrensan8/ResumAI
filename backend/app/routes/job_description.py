@@ -1,7 +1,7 @@
 from fastapi import APIRouter, Depends, Cookie, HTTPException, Header
 from sqlalchemy.orm import Session
 from app.database import get_db
-from app.models import JobDescription, Resume
+from app.models import JobDescription, Resume, AnalysisScores, ResumeFeedback
 from pydantic import BaseModel
 
 router = APIRouter()
@@ -37,6 +37,10 @@ async def upload_job_description(
             job_description=request.job_description
         )
         db.add(new_job_desc)
+    # The session's previous analysis was run against the old job description, so drop it;
+    # otherwise /api/history/claim would save it paired with this new job description.
+    db.query(AnalysisScores).filter(AnalysisScores.session_id == effective_session_id).delete()
+    db.query(ResumeFeedback).filter(ResumeFeedback.session_id == effective_session_id).delete()
     db.commit()
 
     return {"message": "Job description uploaded successfully"}

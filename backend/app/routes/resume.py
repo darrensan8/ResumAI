@@ -1,7 +1,7 @@
 from fastapi import APIRouter, UploadFile, File, Depends, Response, Cookie
 from app.database import get_db
 from sqlalchemy.orm import Session
-from app.models import Resume
+from app.models import Resume, AnalysisScores, ResumeFeedback
 import pdfplumber
 import io
 import uuid
@@ -48,6 +48,10 @@ async def upload_resume(
             resume_data=file_bytes
             )
         db.add(new_resume)
+    # The session's previous analysis was run on the old resume, so drop it; otherwise
+    # /api/history/claim would save it paired with this new resume text.
+    db.query(AnalysisScores).filter(AnalysisScores.session_id == session_id).delete()
+    db.query(ResumeFeedback).filter(ResumeFeedback.session_id == session_id).delete()
     db.commit()
 
     response.set_cookie(key="session_id", value=session_id, httponly=False, samesite="none", secure=True)

@@ -1,6 +1,7 @@
 from sqlalchemy import Column, String, Text, LargeBinary, JSON, DateTime, Integer
 from app.database import Base
 from sqlalchemy.sql import func
+import uuid
 
 class Resume(Base):
     __tablename__ = "resumes"
@@ -38,4 +39,18 @@ class Analytics(Base):
     session_id = Column(String, index=True)
     resume_length = Column(String, nullable=False)
     job_description_length = Column(String, nullable=False)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+class SavedAnalysis(Base):
+    """A logged-in user's analysis history; unlike the session tables, rows are appended, not upserted."""
+    __tablename__ = "saved_analyses"
+
+    id = Column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
+    user_id = Column(String, index=True, nullable=False)
+    session_id = Column(String, index=True)
+    job_description = Column(Text, nullable=False)
+    resume_text = Column(Text, nullable=False)
+    overall_score = Column(Integer)
+    hiring_recommendation = Column(String)
+    analysis_data = Column(JSON, nullable=False)
     created_at = Column(DateTime(timezone=True), server_default=func.now())

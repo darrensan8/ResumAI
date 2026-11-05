@@ -1,7 +1,7 @@
 from fastapi import FastAPI
 from app.database import engine
 from app.models import Base
-from app.routes import analysis, get_resume, resume, job_description
+from app.routes import analysis, get_resume, history, resume, job_description
 from fastapi.middleware.cors import CORSMiddleware
 
 app = FastAPI()
@@ -25,6 +25,7 @@ app.include_router(resume.router, prefix="/api/resume", tags=["resume"])
 app.include_router(job_description.router, prefix="/api/job-description", tags=["job-description"])
 app.include_router(analysis.router, prefix="/api/analysis", tags=["analysis"])
 app.include_router(get_resume.router, prefix="/api/get-resume", tags=["get-resume"])
+app.include_router(history.router, prefix="/api/history", tags=["history"])
 
 @app.get("/")
 def root():

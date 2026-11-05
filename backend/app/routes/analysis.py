@@ -4,7 +4,8 @@ from fastapi.concurrency import run_in_threadpool
 from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
 from app.database import get_db, SessionLocal
-from app.models import Resume, JobDescription, AnalysisScores, ResumeFeedback
+from app.models import Resume, JobDescription, AnalysisScores, ResumeFeedback, SavedAnalysis
+from app.auth import get_optional_user_id
 from app.services.analysis import analyze_resume, stream_analysis
 from pydantic import BaseModel
 
@@ -30,7 +31,26 @@ def load_inputs(db: Session, session_id: str | None, x_session_id: str | None) -
     return effective_session_id, resume, job_desc
 
 
-def save_analysis(db: Session, effective_session_id: str, analysis: dict) -> None:
+def new_saved_analysis(user_id: str, session_id: str, resume_text: str, job_description: str, analysis: dict) -> SavedAnalysis:
+    return SavedAnalysis(
+        user_id=user_id,
+        session_id=session_id,
+        resume_text=resume_text,
+        job_description=job_description,
+        overall_score=analysis.get("overall_score"),
+        hiring_recommendation=analysis.get("hiring_recommendation"),
+        analysis_data=analysis,
+    )
+
+
+def save_analysis(
+    db: Session,
+    effective_session_id: str,
+    analysis: dict,
+    user_id: str | None = None,
+    resume_text: str = "",
+    job_description: str = "",
+) -> None:
     existing_score = db.query(AnalysisScores).filter(AnalysisScores.session_id == effective_session_id).first()
     if existing_score:
         existing_score.analysis_data = analysis
@@ -51,6 +71,9 @@ def save_analysis(db: Session, effective_session_id: str, analysis: dict) -> Non
             improvements_data=analysis.get("improvements", [])
         ))
 
+    if user_id:
+        db.add(new_saved_analysis(user_id, effective_session_id, resume_text, job_description, analysis))
+
     db.commit()
 
 
@@ -59,6 +82,7 @@ async def analyze(
     request: AnalysisRequest,
     session_id: str = Cookie(default=None),
     x_session_id: str = Header(default=None),
+    user_id: str | None = Depends(get_optional_user_id),
     db: Session = Depends(get_db)
 ):
     effective_session_id, resume, job_desc = load_inputs(db, session_id, x_session_id)
@@ -70,7 +94,7 @@ async def analyze(
     except ValueError as e:
         raise HTTPException(status_code=500, detail=str(e))
 
-    save_analysis(db, effective_session_id, analysis)
+    save_analysis(db, effective_session_id, analysis, user_id, resume.resume_text, job_desc.job_description)
     return analysis
 
 
@@ -78,11 +102,11 @@ def _sse(event: str, data) -> str:
     return f"event: {event}\ndata: {json.dumps(data)}\n\n"
 
 
-def _save_in_new_session(effective_session_id: str, analysis: dict) -> None:
+def _save_in_new_session(effective_session_id: str, analysis: dict, *save_args) -> None:
     # The request-scoped session may already be closed while the stream is still open.
     db = SessionLocal()
     try:
-        save_analysis(db, effective_session_id, analysis)
+        save_analysis(db, effective_session_id, analysis, *save_args)
     finally:
         db.close()
 
@@ -92,6 +116,7 @@ async def analyze_stream(
     request: AnalysisRequest,
     session_id: str = Cookie(default=None),
     x_session_id: str = Header(default=None),
+    user_id: str | None = Depends(get_optional_user_id),
     db: Session = Depends(get_db)
 ):
     """Server-sent events: one `section` event per finished field, then `done` or `error`."""
@@ -105,7 +130,9 @@ async def analyze_stream(
                     key, value = payload
                     yield _sse("section", {"key": key, "value": value})
                 else:
-                    await run_in_threadpool(_save_in_new_session, effective_session_id, payload)
+                    await run_in_threadpool(
+                        _save_in_new_session, effective_session_id, payload, user_id, resume_text, job_description
+                    )
                     yield _sse("done", {})
         except Exception as e:
             yield _sse("error", {"detail": str(e) if isinstance(e, ValueError) else "Analysis failed."})

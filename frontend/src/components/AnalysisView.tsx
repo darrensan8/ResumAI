@@ -3,7 +3,10 @@ import { mockAnalysis } from '../mocks/analysis'
 import GlassCard from './GlassCard'
 
 // The mock fixture mirrors the backend response, so it doubles as the type.
-export type AnalysisData = typeof mockAnalysis
+// ats_scan is optional: older history rows predate it, and a failed scan is just {error}.
+type MockAnalysis = typeof mockAnalysis
+export type AtsScan = MockAnalysis['ats_scan']
+export type AnalysisData = Omit<MockAnalysis, 'ats_scan'> & { ats_scan?: AtsScan | { error: string } }
 
 const scoreColor = (v: number) =>
   v >= 70 ? 'bg-emerald-500' : v >= 50 ? 'bg-amber-500' : 'bg-red-500'
@@ -24,6 +27,7 @@ export default function AnalysisView({ analysis }: { analysis: Partial<AnalysisD
   const overall = analysis.overall_score ?? 0
   const recoKey = analysis.hiring_recommendation
   const readiness = analysis.interview_readiness
+  const scan = analysis.ats_scan && !('error' in analysis.ats_scan) ? analysis.ats_scan : undefined
 
   return (
     <>
@@ -179,10 +183,15 @@ export default function AnalysisView({ analysis }: { analysis: Partial<AnalysisD
       </GlassCard>
       )}
 
-      {/* ATS breakdown */}
-      {analysis.ats_analysis && (
+      {/* ATS breakdown: measured parser results first, then Claude's notes */}
+      {(analysis.ats_analysis || scan) && (
       <GlassCard>
         <SectionTitle>ATS Breakdown</SectionTitle>
+        {scan && <ParserResults scan={scan} />}
+        {analysis.ats_analysis && scan && (
+          <span className="mb-2 mt-6 block text-sm font-semibold text-slate-500">Reviewer notes</span>
+        )}
+        {analysis.ats_analysis && (
         <div className="mb-4 flex flex-wrap gap-3">
           <div
             className={
@@ -194,6 +203,7 @@ export default function AnalysisView({ analysis }: { analysis: Partial<AnalysisD
             Keyword density
           </div>
         </div>
+        )}
         {analysis.ats_analysis?.formatting_issues && analysis.ats_analysis.formatting_issues.length > 0 && (
           <div className="mb-4">
             <span className="mb-2 block text-sm font-semibold text-slate-500">Formatting issues</span>
@@ -282,6 +292,76 @@ export default function AnalysisView({ analysis }: { analysis: Partial<AnalysisD
       </GlassCard>
       )}
     </>
+  )
+}
+
+/** Facts measured from the PDF by the backend parser (services/ats.py), not model output. */
+function ParserResults({ scan }: { scan: AtsScan }) {
+  const { contact, keyword_match: kw } = scan
+  const contactMissing = [!contact.email && 'email', !contact.phone && 'phone'].filter(Boolean)
+  const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? '' : 's'}`
+  const checks: { ok: boolean; text: string }[] = [
+    {
+      ok: scan.text_extractable,
+      text: scan.text_extractable ? 'Text is machine-readable' : 'Little or no readable text; looks like a scanned image',
+    },
+    {
+      ok: scan.multi_column_pages.length === 0,
+      text:
+        scan.multi_column_pages.length === 0
+          ? 'Single-column layout'
+          : `Multi-column layout on page ${scan.multi_column_pages.join(', ')}`,
+    },
+    { ok: scan.tables_found === 0, text: scan.tables_found === 0 ? 'No tables' : `${plural(scan.tables_found, 'table')} found` },
+    {
+      ok: scan.image_count === 0,
+      text: scan.image_count === 0 ? 'No images or icons' : `${plural(scan.image_count, 'image')} or icons`,
+    },
+    { ok: !scan.header_footer_text, text: scan.header_footer_text ? 'Text in header/footer area' : 'Nothing in header/footer area' },
+    {
+      ok: contactMissing.length === 0,
+      text: contactMissing.length === 0 ? 'Email and phone found' : `No ${contactMissing.join(' or ')} found`,
+    },
+    {
+      ok: scan.sections_missing.length === 0,
+      text:
+        scan.sections_missing.length === 0
+          ? 'Standard section headings found'
+          : `Missing heading${scan.sections_missing.length > 1 ? 's' : ''}: ${scan.sections_missing.join(', ')}`,
+    },
+  ]
+
+  return (
+    <div>
+      <span className="mb-2 block text-sm font-semibold text-slate-500">Parser results, measured from your PDF</span>
+      <ul className="grid gap-3 sm:grid-cols-2">
+        {checks.map((c) => (
+          <Bullet key={c.text} tone={c.ok ? 'green' : 'red'}>
+            {c.text}
+          </Bullet>
+        ))}
+      </ul>
+      {kw.matched.length + kw.missing.length > 0 && (
+        <div className="mt-5">
+          <span className="mb-2 block text-sm font-semibold text-slate-500">
+            Tech keywords from the posting: {kw.match_rate}% found ({kw.matched.length} of{' '}
+            {kw.matched.length + kw.missing.length})
+          </span>
+          <div className="flex flex-wrap gap-2">
+            {kw.matched.map((t) => (
+              <span key={t} className="rounded-full bg-emerald-50 px-3 py-1 text-sm font-medium text-emerald-700">
+                ✓ {t}
+              </span>
+            ))}
+            {kw.missing.map((t) => (
+              <span key={t} className="rounded-full bg-red-50 px-3 py-1 text-sm font-medium text-red-600">
+                ✗ {t}
+              </span>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
   )
 }
 

@@ -70,7 +70,12 @@ and calls `MODEL`/`EFFORT` (`claude-sonnet-5`, medium) with structured outputs:
 stream in, so keep it matching the card order in `AnalysisView.tsx`. Refusals and `max_tokens`
 cut-offs raise `ValueError`. **The prompt's JSON example, `ANALYSIS_SCHEMA`, the SQLAlchemy
 models, and the frontend's `AnalysisView.tsx` rendering are tightly coupled** — changing a
-field means updating all of them. `backend/scripts/benchmark_models.py` compares models on
+field means updating all of them. The one exception is `ats_scan`: deterministic parser
+checks from `backend/app/services/ats.py` (column/table/image/header detection via pdfplumber,
+section headings, contact info, tech-keyword match vs. the JD). The analysis routes compute it
+from the stored PDF bytes, pass it into the prompt as facts, stream it as the first `section`
+event, and merge it into the saved analysis. It is outside `ANALYSIS_SCHEMA` and is optional
+in the frontend type, since older history rows don't have it. `backend/scripts/benchmark_models.py` compares models on
 this exact request (speed, cost, JSON validity); it makes real, billed API calls. When touching Claude/model code, consult the
 `claude-api` skill for current model IDs and API usage rather than guessing.
 

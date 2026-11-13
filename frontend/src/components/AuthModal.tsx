@@ -1,8 +1,10 @@
 import { useEffect, useState, type FormEvent } from 'react'
 import axios from 'axios'
+import { Check, Minus, X } from 'lucide-react'
 import { useAuth, type AuthView } from '../lib/auth'
 import { PASSWORD_RULES, isStrongPassword } from '../lib/password'
 import Button from './Button'
+import FormError from './FormError'
 
 type AuthModalProps = {
   view: AuthView
@@ -11,24 +13,25 @@ type AuthModalProps = {
 }
 
 const BENEFITS = [
-  { title: 'Save every analysis', body: 'Each run is stored automatically, so nothing is lost when you close the tab.' },
-  { title: 'Feedback next to the job description', body: 'Revisit any past feedback alongside the exact JD it was scored against.' },
-  { title: 'Track your progress', body: 'Compare scores across resume versions and roles over time.' },
-  { title: 'Pick up anywhere', body: 'Log in from any device to see your full history.' },
+  { title: 'Every review is saved', body: 'Each run is stored as it finishes, so nothing is lost when you close the tab' },
+  { title: 'Feedback beside the job', body: 'Reopen any review next to the exact job description it was scored against' },
+  { title: 'Scores over time', body: 'See how your score moves across resume versions and roles' },
+  { title: 'Any device', body: 'Log in anywhere to see your full history' },
 ]
 
 const inputClass =
-  'w-full rounded-xl border border-white/70 bg-white/80 px-4 py-3 text-sm text-slate-700 outline-none ' +
-  'transition focus:border-brand-400 focus:ring-2 focus:ring-brand-200 placeholder:text-slate-400'
+  'h-10 w-full rounded-lg border border-line-strong bg-paper px-3 text-[15px] text-ink outline-none ' +
+  'transition-[border-color,box-shadow] duration-150 placeholder:text-ink-3 ' +
+  'focus:border-blue-ink focus:shadow-[0_0_0_3px_rgb(35_70_160_/_0.12)]'
 
 function errorMessage(err: unknown): string {
   if (axios.isAxiosError(err)) {
     const detail = err.response?.data?.detail
-    if (typeof detail === 'string') return detail
-    if (detail?.message) return detail.message
-    if (Array.isArray(detail)) return 'Please enter a valid email address.'
+    if (typeof detail === 'string') return detail.replace(/\.$/, '')
+    if (detail?.message) return String(detail.message).replace(/\.$/, '')
+    if (Array.isArray(detail)) return 'Enter a valid email address'
   }
-  return 'Something went wrong. Please try again.'
+  return 'Something went wrong. Try again'
 }
 
 export default function AuthModal({ view, onViewChange, onClose }: AuthModalProps) {
@@ -40,20 +43,21 @@ export default function AuthModal({ view, onViewChange, onClose }: AuthModalProp
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 px-4 py-6 backdrop-blur-sm"
+      className="fixed inset-0 z-50 flex items-center justify-center bg-ink/30 px-4 py-6"
       onMouseDown={(e) => e.target === e.currentTarget && onClose()}
     >
       <div
         role="dialog"
         aria-modal="true"
-        className="glass relative max-h-full w-full max-w-md overflow-y-auto rounded-[var(--radius-glass)] bg-white/80 p-7 sm:p-8"
+        aria-labelledby="auth-title"
+        className="animate-rise relative max-h-full w-full max-w-[28rem] overflow-y-auto rounded-2xl border border-line bg-paper p-8 shadow-[0_16px_48px_rgb(31_27_22_/_0.16)]"
       >
         <button
           onClick={onClose}
           aria-label="Close"
-          className="absolute right-4 top-4 rounded-full px-2 text-xl leading-none text-slate-400 hover:text-slate-600"
+          className="absolute top-4 right-4 flex h-8 w-8 items-center justify-center rounded-md text-ink-3 transition-colors duration-150 hover:bg-raised hover:text-ink focus-visible:outline-2 focus-visible:outline-blue-ink"
         >
-          ×
+          <X size={16} strokeWidth={1.5} />
         </button>
         {view === 'welcome' ? (
           <Welcome onViewChange={onViewChange} onSkip={onClose} />
@@ -68,29 +72,31 @@ export default function AuthModal({ view, onViewChange, onClose }: AuthModalProp
 function Welcome({ onViewChange, onSkip }: { onViewChange: (v: AuthView) => void; onSkip: () => void }) {
   return (
     <>
-      <h2 className="mb-1 pr-6 text-2xl font-extrabold text-slate-800">Welcome to ResumAI</h2>
-      <p className="mb-5 text-sm text-slate-500">
-        You can use ResumAI without an account. Log in to get more out of it:
+      <h2 id="auth-title" className="pr-8 font-serif text-[28px] leading-[1.15] font-normal text-ink">
+        Keep every review
+      </h2>
+      <p className="mt-2 mb-6 text-[15px] leading-6 text-ink-2">
+        ResumAI works without an account. With one, you also get
       </p>
-      <ul className="mb-6 flex flex-col gap-3">
+      <ul className="m-0 mb-8 flex list-none flex-col gap-4 p-0">
         {BENEFITS.map((b) => (
           <li key={b.title} className="flex gap-3">
-            <span className="mt-0.5 font-bold text-emerald-500">✓</span>
+            <Check size={16} strokeWidth={1.5} className="mt-1 shrink-0 text-ink-3" />
             <div>
-              <p className="text-sm font-semibold text-slate-700">{b.title}</p>
-              <p className="text-sm text-slate-500">{b.body}</p>
+              <p className="text-[15px] font-medium text-ink">{b.title}</p>
+              <p className="text-sm leading-[22px] text-ink-2">{b.body}</p>
             </div>
           </li>
         ))}
       </ul>
       <div className="flex flex-col gap-2">
         <Button onClick={() => onViewChange('signup')}>Create account</Button>
-        <Button variant="ghost" onClick={() => onViewChange('login')}>
+        <Button variant="secondary" onClick={() => onViewChange('login')}>
           Log in
         </Button>
-        <button onClick={onSkip} className="mt-1 text-sm font-medium text-slate-400 hover:text-slate-600">
+        <Button variant="quiet" onClick={onSkip}>
           Skip for now
-        </button>
+        </Button>
       </div>
     </>
   )
@@ -121,16 +127,18 @@ function CredentialsForm({ mode, onViewChange }: { mode: 'login' | 'signup'; onV
   }
 
   return (
-    <form onSubmit={handleSubmit} className="flex flex-col gap-4">
+    <form onSubmit={handleSubmit} className="flex flex-col gap-5">
       <div>
-        <h2 className="pr-6 text-2xl font-extrabold text-slate-800">{isSignup ? 'Create your account' : 'Log in'}</h2>
-        <p className="mt-1 text-sm text-slate-500">
-          {isSignup ? 'Save your feedback and job descriptions.' : 'See your past feedback and job descriptions.'}
+        <h2 id="auth-title" className="pr-8 font-serif text-[28px] leading-[1.15] font-normal text-ink">
+          {isSignup ? 'Create your account' : 'Log in'}
+        </h2>
+        <p className="mt-2 text-[15px] text-ink-2">
+          {isSignup ? 'Save your reviews and the jobs they were scored against' : 'Pick up your past reviews'}
         </p>
       </div>
 
-      <label className="flex flex-col gap-1.5">
-        <span className="text-sm font-semibold text-slate-600">Email</span>
+      <label className="flex flex-col gap-2">
+        <span className="text-sm text-ink-2">Email</span>
         <input
           type="email"
           autoComplete="email"
@@ -143,8 +151,8 @@ function CredentialsForm({ mode, onViewChange }: { mode: 'login' | 'signup'; onV
         />
       </label>
 
-      <label className="flex flex-col gap-1.5">
-        <span className="text-sm font-semibold text-slate-600">Password</span>
+      <label className="flex flex-col gap-2">
+        <span className="text-sm text-ink-2">Password</span>
         <input
           type="password"
           autoComplete={isSignup ? 'new-password' : 'current-password'}
@@ -157,12 +165,15 @@ function CredentialsForm({ mode, onViewChange }: { mode: 'login' | 'signup'; onV
       </label>
 
       {isSignup && (
-        <ul className="grid gap-1.5 sm:grid-cols-2">
+        <ul className="m-0 -mt-1 grid list-none gap-2 p-0 sm:grid-cols-2">
           {PASSWORD_RULES.map((rule) => {
             const ok = rule.test(password)
             return (
-              <li key={rule.label} className={'flex gap-2 text-xs ' + (ok ? 'text-emerald-600' : 'text-slate-400')}>
-                <span className="font-bold">{ok ? '✓' : '✗'}</span>
+              <li
+                key={rule.label}
+                className={'flex items-center gap-2 text-[13px] ' + (ok ? 'text-moss' : 'text-ink-3')}
+              >
+                {ok ? <Check size={14} strokeWidth={1.5} /> : <Minus size={14} strokeWidth={1.5} />}
                 {rule.label}
               </li>
             )
@@ -170,18 +181,18 @@ function CredentialsForm({ mode, onViewChange }: { mode: 'login' | 'signup'; onV
         </ul>
       )}
 
-      {error && <p className="rounded-lg bg-red-50 px-4 py-2 text-center text-sm text-red-600">{error}</p>}
+      {error && <FormError>{error}</FormError>}
 
       <Button type="submit" disabled={!canSubmit}>
-        {isLoading ? 'Please wait…' : isSignup ? 'Create account' : 'Log in'}
+        {isLoading ? 'One moment…' : isSignup ? 'Create account' : 'Log in'}
       </Button>
 
-      <p className="text-center text-sm text-slate-500">
+      <p className="text-center text-sm text-ink-2">
         {isSignup ? 'Already have an account? ' : 'New to ResumAI? '}
         <button
           type="button"
           onClick={() => onViewChange(isSignup ? 'login' : 'signup')}
-          className="font-semibold text-brand-600 hover:underline"
+          className="text-blue-ink underline decoration-blue-ink/30 underline-offset-4 hover:decoration-blue-ink"
         >
           {isSignup ? 'Log in' : 'Create an account'}
         </button>

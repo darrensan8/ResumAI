@@ -1,11 +1,14 @@
 import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
+import { MessageSquare } from 'lucide-react'
 import { API_URL } from '../lib/api'
 import { mockAnalysis } from '../mocks/analysis'
 import { authHeaders } from '../lib/auth'
+import { readSSE } from '../lib/sse'
 import PageShell from '../components/PageShell'
 import Button from '../components/Button'
 import AnalysisView, { type AnalysisData } from '../components/AnalysisView'
+import ChatPanel from '../components/ChatPanel'
 
 /**
  * POST to the streaming analysis endpoint and dispatch its server-sent events.
@@ -25,26 +28,14 @@ async function streamAnalysis(
     body: JSON.stringify({ role_level: roleLevel }),
     signal,
   })
-  if (!response.ok || !response.body) throw new Error(`HTTP ${response.status}`)
+  if (!response.ok) throw new Error(`HTTP ${response.status}`)
 
-  const reader = response.body.pipeThrough(new TextDecoderStream()).getReader()
-  let buffer = ''
-  for (;;) {
-    const { value, done } = await reader.read()
-    if (done) break
-    buffer += value
-    let end
-    while ((end = buffer.indexOf('\n\n')) !== -1) {
-      const raw = buffer.slice(0, end)
-      buffer = buffer.slice(end + 2)
-      const event = raw.match(/^event: (.*)$/m)?.[1]
-      const data = JSON.parse(raw.match(/^data: (.*)$/m)?.[1] ?? '{}')
-      if (event === 'section') onSection(data.key, data.value)
-      else if (event === 'done') return
-      else if (event === 'error') throw new Error(data.detail)
-    }
-  }
-  throw new Error('Analysis stream ended early')
+  const finished = await readSSE(response, (event, data) => {
+    if (event === 'section') onSection(data.key, data.value)
+    else if (event === 'done') return 'stop'
+    else if (event === 'error') throw new Error(data.detail)
+  })
+  if (!finished) throw new Error('Analysis stream ended early')
 }
 
 export default function Analysis() {
@@ -53,10 +44,12 @@ export default function Analysis() {
   const [analysis, setAnalysis] = useState<Partial<AnalysisData>>({})
   const [isDone, setIsDone] = useState(false)
   const [error, setError] = useState('')
+  const [chatOpen, setChatOpen] = useState(false)
+  // Dev-only: ?mock=1 renders fixture data with no backend/Claude call.
+  const isMock = new URLSearchParams(window.location.search).get('mock') === '1'
 
   useEffect(() => {
-    // Dev-only: ?mock=1 renders fixture data with no backend/Claude call.
-    if (new URLSearchParams(window.location.search).get('mock') === '1') {
+    if (isMock) {
       setAnalysis(mockAnalysis)
       setIsDone(true)
       return
@@ -92,6 +85,15 @@ export default function Analysis() {
   const streaming = !isDone && !error
   const started = analysis.recruiter_first_impression !== undefined
 
+  // The chat backend reads the saved analysis, which only exists once the stream is done.
+  const chatDisabledReason = isMock
+    ? 'Questions are off in the sample review'
+    : error
+      ? 'Questions need a finished review'
+      : !isDone
+        ? 'You can ask questions once the review finishes'
+        : undefined
+
   return (
     <PageShell width="wide">
       <AnalysisView
@@ -101,6 +103,10 @@ export default function Analysis() {
           <>
             {/* Keeps the session's resume; only the job description is replaced. */}
             <Button onClick={() => navigate('/job-description')}>Analyze another job</Button>
+            <Button variant="secondary" onClick={() => setChatOpen(true)} aria-expanded={chatOpen}>
+              <MessageSquare size={16} strokeWidth={1.5} />
+              Ask about this review
+            </Button>
             <Button variant="quiet" onClick={restart}>
               Upload a new resume
             </Button>
@@ -137,6 +143,19 @@ export default function Analysis() {
           )
         }
       />
+
+      <ChatPanel open={chatOpen} onClose={() => setChatOpen(false)} disabledReason={chatDisabledReason} />
+
+      {/* On small screens the rail's buttons scroll away, so keep a way back to the chat. */}
+      {!chatOpen && isDone && (
+        <button
+          onClick={() => setChatOpen(true)}
+          className="fixed right-4 bottom-[calc(env(safe-area-inset-bottom,0px)+1rem)] z-30 inline-flex h-11 items-center gap-2 rounded-full bg-blue-ink px-4 text-sm font-medium text-white shadow-[0_8px_24px_rgb(31_27_22_/_0.18)] transition-colors duration-150 hover:bg-blue-ink-hover focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-ink lg:hidden"
+        >
+          <MessageSquare size={16} strokeWidth={1.5} />
+          Ask about this review
+        </button>
+      )}
     </PageShell>
   )
 }

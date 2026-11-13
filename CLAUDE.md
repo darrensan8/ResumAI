@@ -59,7 +59,12 @@ verification, password reset, or login rate limiting yet.
 existing resume) → `POST /api/analysis/analyze-stream` (requires both; calls Claude and
 streams server-sent events: one `section` event per finished top-level field, then `done` or
 `error`; the frontend uses this). `POST /api/analysis/analyze` returns the same analysis as
-one JSON response. Resume PDF
+one JSON response. After an analysis, `POST /api/chat/message` (`{messages: [{role, content}]}`,
+max 30 alternating messages ending on `user`, ≤4000 chars each) streams a follow-up answer as
+`delta` SSE events, then `done`/`error`. Chat is **ephemeral**: the frontend's `ChatPanel`
+holds the conversation and resends it every turn; nothing is stored. `services/chat.py`
+reuses the analysis client and `MODEL` (effort low), and puts the resume, JD and saved
+`AnalysisScores` in a cached system prompt. Resume PDF
 bytes can be re-fetched via `GET /api/get-resume/get-resume`. Routers are registered in
 `backend/main.py`; each lives in `backend/app/routes/` and is mounted under `/api/<name>`.
 
@@ -86,7 +91,10 @@ change requires manually altering the live DB.
 `main.tsx` under `AuthProvider` (which also owns the login modal and the one-time
 first-visit welcome prompt). `PageShell` renders the top-right `AccountButton` on every
 page. Result cards live in `components/AnalysisView.tsx`, shared by `Analysis` and
-`HistoryDetail`; `App.tsx` is a placeholder. The API base URL lives in `src/lib/api.ts` and
+`HistoryDetail`. `Analysis` also mounts `components/ChatPanel.tsx`, a right-hand sheet
+(full screen on phones) opened from the rail's "Ask about this review" button; it only sends
+once the stream is done. SSE parsing is shared via `lib/sse.ts` (`readSSE`). `App.tsx` is a
+placeholder. The API base URL lives in `src/lib/api.ts` and
 defaults to the Railway production URL, so `npm run dev` hits prod unless you run it with
 `VITE_API_URL=http://localhost:8000`.
 

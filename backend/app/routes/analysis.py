@@ -6,6 +6,7 @@ from sqlalchemy.orm import Session
 from app.database import get_db, SessionLocal
 from app.models import Resume, JobDescription, AnalysisScores, ResumeFeedback, AnalysisHistory, User
 from app.services.analysis import analyze_resume, stream_analysis
+from app.services.ats import scan_resume
 from app.services.auth import get_optional_user
 from pydantic import BaseModel
 
@@ -80,13 +81,17 @@ async def analyze(
     db: Session = Depends(get_db)
 ):
     effective_session_id, resume, job_desc = load_inputs(db, session_id, x_session_id)
+    scan = await run_in_threadpool(
+        scan_resume, resume.resume_data, resume.resume_text, job_desc.job_description
+    )
 
     try:
         analysis = await run_in_threadpool(
-            analyze_resume, resume.resume_text, job_desc.job_description, request.role_level
+            analyze_resume, resume.resume_text, job_desc.job_description, request.role_level, scan
         )
     except ValueError as e:
         raise HTTPException(status_code=500, detail=str(e))
+    analysis["ats_scan"] = scan
 
     save_analysis(
         db, effective_session_id, analysis,
@@ -120,14 +125,20 @@ async def analyze_stream(
     effective_session_id, resume, job_desc = load_inputs(db, session_id, x_session_id)
     resume_text, job_description = resume.resume_text, job_desc.job_description
     user_id = user.id if user else None
+    scan = await run_in_threadpool(scan_resume, resume.resume_data, resume_text, job_description)
 
     async def events():
+        # The parser results are measured, not generated, so they can show before Claude starts.
+        yield _sse("section", {"key": "ats_scan", "value": scan})
         try:
-            async for kind, payload in stream_analysis(resume_text, job_description, request.role_level):
+            async for kind, payload in stream_analysis(
+                resume_text, job_description, request.role_level, ats_scan=scan
+            ):
                 if kind == "section":
                     key, value = payload
                     yield _sse("section", {"key": key, "value": value})
                 else:
+                    payload["ats_scan"] = scan
                     await run_in_threadpool(
                         _save_in_new_session, effective_session_id, payload,
                         job_description, request.role_level, user_id,

@@ -8,7 +8,10 @@ import Redline from './analysis/Redline'
 import SectionIndex, { type IndexEntry } from './analysis/SectionIndex'
 
 // The mock fixture mirrors the backend response, so it doubles as the type.
-export type AnalysisData = typeof mockAnalysis
+// ats_scan is optional: older history rows predate it, and a failed scan is just {error}.
+type MockAnalysis = typeof mockAnalysis
+export type AtsScan = MockAnalysis['ats_scan']
+export type AnalysisData = Omit<MockAnalysis, 'ats_scan'> & { ats_scan?: AtsScan | { error: string } }
 type Improvement = AnalysisData['improvements'][number]
 
 const PRIORITIES = [
@@ -115,7 +118,14 @@ export default function AnalysisView({
 
         {has.missing && <MissingSection analysis={a} />}
 
-        {has.ats && <AtsSection ats={a.ats_analysis!} />}
+        {/* Shown with Claude's notes (not when ats_scan streams in first), so it doesn't jump. */}
+        {has.ats && (
+          <AtsSection
+            ats={a.ats_analysis!}
+            scan={a.ats_scan && !('error' in a.ats_scan) ? a.ats_scan : undefined}
+            alreadyMissing={missingTerms(a)}
+          />
+        )}
 
         {has.readiness && <ReadinessSection readiness={a.interview_readiness!} />}
 
@@ -279,13 +289,37 @@ function MissingSection({ analysis: a }: { analysis: Partial<AnalysisData> }) {
   )
 }
 
-function AtsSection({ ats }: { ats: AnalysisData['ats_analysis'] }) {
+/** Every term the "Missing from your resume" section lists, lowercased. */
+function missingTerms(a: Partial<AnalysisData>): Set<string> {
+  const tech = a.tech_stack_analysis
+  return new Set(
+    [
+      ...(a.keyword_analysis?.missing_critical_keywords ?? []),
+      ...(tech?.languages?.missing_from_jd ?? []),
+      ...(tech?.frameworks_and_libraries?.missing_from_jd ?? []),
+      ...(tech?.tools_and_platforms?.missing_from_jd ?? []),
+    ].map((t) => t.toLowerCase())
+  )
+}
+
+function AtsSection({
+  ats,
+  scan,
+  alreadyMissing,
+}: {
+  ats: AnalysisData['ats_analysis']
+  /** Measured by the backend parser (services/ats.py); absent on older history rows */
+  scan?: AtsScan
+  alreadyMissing: Set<string>
+}) {
   const issues = ats.formatting_issues ?? []
   const order = ats.recommended_section_order ?? []
   return (
     <Section id="ats" title="ATS check" note="How applicant tracking software will parse the file">
       <div className="grid gap-8 md:grid-cols-[minmax(0,1fr)_220px] md:gap-12">
         <div>
+          {scan && <ParserResults scan={scan} alreadyMissing={alreadyMissing} />}
+          {scan && <p className="mb-3 mt-8 text-sm text-ink-2">Reviewer notes</p>}
           <ul className="m-0 flex list-none flex-col gap-2 p-0">
             <StatusRow ok={ats.keyword_density_ok}>
               Keyword density {ats.keyword_density_ok ? 'is in range' : 'needs work for this posting'}
@@ -319,6 +353,80 @@ function AtsSection({ ats }: { ats: AnalysisData['ats_analysis'] }) {
         )}
       </div>
     </Section>
+  )
+}
+
+/** Facts measured from the PDF by the backend parser (services/ats.py), not model output. */
+function ParserResults({ scan, alreadyMissing }: { scan: AtsScan; alreadyMissing: Set<string> }) {
+  const { contact, keyword_match: kw } = scan
+  const contactMissing = [!contact.email && 'email', !contact.phone && 'phone'].filter(Boolean)
+  const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? '' : 's'}`
+  const checks: { ok: boolean; text: string }[] = [
+    {
+      ok: scan.text_extractable,
+      text: scan.text_extractable ? 'Text is machine-readable' : 'Little or no readable text; looks like a scanned image',
+    },
+    {
+      ok: scan.multi_column_pages.length === 0,
+      text:
+        scan.multi_column_pages.length === 0
+          ? 'Single-column layout'
+          : `Multi-column layout on page ${scan.multi_column_pages.join(', ')}`,
+    },
+    { ok: scan.tables_found === 0, text: scan.tables_found === 0 ? 'No tables' : `${plural(scan.tables_found, 'table')} found` },
+    {
+      ok: scan.image_count === 0,
+      text: scan.image_count === 0 ? 'No images or icons' : `${plural(scan.image_count, 'image')} or icons`,
+    },
+    { ok: !scan.header_footer_text, text: scan.header_footer_text ? 'Text in the header/footer area' : 'Nothing in the header/footer area' },
+    {
+      ok: contactMissing.length === 0,
+      text: contactMissing.length === 0 ? 'Email and phone found' : `No ${contactMissing.join(' or ')} found`,
+    },
+    {
+      ok: scan.sections_missing.length === 0,
+      text:
+        scan.sections_missing.length === 0
+          ? 'Standard section headings found'
+          : `Missing heading${scan.sections_missing.length > 1 ? 's' : ''}: ${scan.sections_missing.join(', ')}`,
+    },
+  ]
+  const total = kw.matched.length + kw.missing.length
+  // Terms already listed under "Missing from your resume" aren't repeated here.
+  const newlyMissing = kw.missing.filter((t) => !alreadyMissing.has(t.toLowerCase()))
+
+  return (
+    <div>
+      <p className="mb-3 text-sm text-ink-2">Measured from your PDF</p>
+      <ul className="m-0 flex list-none flex-col gap-2 p-0">
+        {checks.map((c) => (
+          <StatusRow key={c.text} ok={c.ok}>
+            {c.text}
+          </StatusRow>
+        ))}
+      </ul>
+      {total > 0 && (
+        <div className="mt-6">
+          <p className="mb-3 text-sm text-ink-2">
+            {kw.match_rate}% of the posting’s tech keywords found ({kw.matched.length} of {total})
+          </p>
+          <div className="flex flex-wrap gap-2">
+            {kw.matched.map((t) => (
+              <span key={t} className="inline-flex items-center gap-1 rounded-md bg-raised px-2 py-1 text-sm text-ink">
+                <Check size={14} strokeWidth={1.5} className="text-moss" aria-label="Found" />
+                {t}
+              </span>
+            ))}
+            {newlyMissing.map((t) => (
+              <span key={t} className="inline-flex items-center gap-1 rounded-md bg-raised px-2 py-1 text-sm text-ink-2">
+                <Minus size={14} strokeWidth={1.5} className="text-pen" aria-label="Missing" />
+                {t}
+              </span>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
   )
 }
 

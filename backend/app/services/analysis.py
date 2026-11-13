@@ -90,7 +90,21 @@ ANALYSIS_SCHEMA = _obj({
 })
 
 
-def build_prompt(resume_text: str, job_description: str, role_level: str = "intern") -> str:
+def _parser_findings(ats_scan: dict | None) -> str:
+    if not ats_scan or "error" in ats_scan:
+        return ""
+    return f"""
+    PARSER FINDINGS (measured from the actual PDF by an ATS-style parser; treat as fact):
+    {json.dumps(ats_scan)}
+    Base "ats_analysis.formatting_issues", "keyword_density_ok", "file_format_notes" and
+    "scores.ats_compatibility" on these findings. Do not report layout problems (columns,
+    tables, images, headers/footers) that the parser did not find; you only see extracted
+    text, which cannot show layout. keyword_match covers tech terms only.
+    """
+
+
+def build_prompt(resume_text: str, job_description: str, role_level: str = "intern",
+                 ats_scan: dict | None = None) -> str:
     """Build the analysis prompt, which pins the exact output JSON schema."""
     today = date.today().strftime("%B %d, %Y")
     return f"""
@@ -106,6 +120,7 @@ def build_prompt(resume_text: str, job_description: str, role_level: str = "inte
     {resume_text}
     JOB DESCRIPTION:
     {job_description}
+    {_parser_findings(ats_scan)}
     ROLE LEVEL CONTEXT:
     - intern/entry: Focus on projects, coursework, fundamentals, learning trajectory
     - mid: Expect ownership of features, some system design exposure, real-world impact
@@ -154,7 +169,7 @@ def build_prompt(resume_text: str, job_description: str, role_level: str = "inte
             "formatting_issues": ["issue1"],
             "keyword_density_ok": true,
             "recommended_section_order": ["Summary", "Skills", "Experience", "Projects", "Education"],
-            "file_format_notes": "PDF preferred; avoid tables/columns/headers in footers"
+            "file_format_notes": "1-2 sentences on how this specific file will parse"
         }},
         "interview_readiness": {{
             "technical_screen_ready": true,
@@ -176,7 +191,8 @@ def build_prompt(resume_text: str, job_description: str, role_level: str = "inte
 
 
 def request_params(resume_text: str, job_description: str, role_level: str = "intern",
-                   model: str = MODEL, effort: str | None = EFFORT) -> dict:
+                   model: str = MODEL, effort: str | None = EFFORT,
+                   ats_scan: dict | None = None) -> dict:
     """Messages API params for an analysis request; shared by the app and the benchmark."""
     output_config = {}
     if model in STRUCTURED_OUTPUT_MODELS:
@@ -187,7 +203,7 @@ def request_params(resume_text: str, job_description: str, role_level: str = "in
         "model": model,
         "max_tokens": MAX_TOKENS,
         "messages": [
-            {"role": "user", "content": build_prompt(resume_text, job_description, role_level)}
+            {"role": "user", "content": build_prompt(resume_text, job_description, role_level, ats_scan)}
         ],
     }
     if output_config:
@@ -221,7 +237,8 @@ def _response_text(message) -> str:
     return "".join(block.text for block in message.content if block.type == "text")
 
 
-def analyze_resume(resume_text: str, job_description: str, role_level: str = "intern") -> dict:
+def analyze_resume(resume_text: str, job_description: str, role_level: str = "intern",
+                   ats_scan: dict | None = None) -> dict:
     """
     Analyze a resume against a job description with deep SWE/tech-specific insight.
 
@@ -229,14 +246,18 @@ def analyze_resume(resume_text: str, job_description: str, role_level: str = "in
         resume_text: Raw resume text
         job_description: Job description text
         role_level: "intern", "entry", "mid", "senior", "staff", "principal"
+        ats_scan: deterministic parser findings from services/ats.py, given to Claude as facts
     """
-    message = client.messages.create(**request_params(resume_text, job_description, role_level))
+    message = client.messages.create(
+        **request_params(resume_text, job_description, role_level, ats_scan=ats_scan)
+    )
     _check_stop_reason(message.stop_reason)
     return parse_analysis(_response_text(message))
 
 
 async def stream_analysis(
-    resume_text: str, job_description: str, role_level: str = "intern"
+    resume_text: str, job_description: str, role_level: str = "intern",
+    ats_scan: dict | None = None,
 ) -> AsyncIterator[tuple[str, object]]:
     """
     Stream an analysis section by section.
@@ -249,7 +270,7 @@ async def stream_analysis(
     buffer = ""
     sent: set[str] = set()
     partial_list_len = 0
-    params = request_params(resume_text, job_description, role_level)
+    params = request_params(resume_text, job_description, role_level, ats_scan=ats_scan)
     async with async_client.messages.stream(**params) as stream:
         async for text in stream.text_stream:
             buffer += text

@@ -1,13 +1,14 @@
 import { useEffect, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import axios from 'axios'
+import { ArrowLeft } from 'lucide-react'
 import { API_URL } from '../lib/api'
 import { authHeaders, useAuth } from '../lib/auth'
 import { formatDate } from '../lib/format'
 import PageShell from '../components/PageShell'
-import GlassCard from '../components/GlassCard'
+import Panel from '../components/Panel'
 import Button from '../components/Button'
-import AnalysisView, { type AnalysisData } from '../components/AnalysisView'
+import AnalysisView, { Section, type AnalysisData } from '../components/AnalysisView'
 
 type HistoryEntry = {
   id: number
@@ -33,65 +34,74 @@ export default function HistoryDetail() {
       .catch((err) =>
         setError(
           axios.isAxiosError(err) && err.response?.status === 404
-            ? 'This analysis could not be found.'
-            : 'Could not load this analysis. Please try again.'
+            ? 'This review couldn’t be found'
+            : 'Couldn’t load this review. Try again'
         )
       )
   }, [id, user])
 
-  return (
-    <PageShell>
-      <div className="mx-auto w-full max-w-4xl">
-        <div className="mb-6 flex flex-wrap items-center justify-between gap-3">
-          <div>
-            <h1 className="bg-gradient-to-r from-brand-600 to-[var(--color-accent-cyan)] bg-clip-text text-4xl font-extrabold tracking-tight text-transparent">
-              Past Feedback
-            </h1>
-            {entry && (
-              <p className="mt-1 text-sm text-slate-500">
-                {formatDate(entry.created_at)} · <span className="capitalize">{entry.role_level}</span> role
-              </p>
-            )}
-          </div>
-          <Button variant="ghost" onClick={() => navigate('/history')}>
-            ← All Feedback
-          </Button>
-        </div>
+  const back = (
+    <Button variant="secondary" onClick={() => navigate('/history')}>
+      <ArrowLeft size={16} strokeWidth={1.5} />
+      All reviews
+    </Button>
+  )
 
-        {!user ? (
-          <GlassCard className="text-center">
-            <p className="mb-5 text-base text-slate-600">Log in to see your past feedback.</p>
-            <Button onClick={() => openAuthModal('login')}>Log in</Button>
-          </GlassCard>
-        ) : error ? (
-          <GlassCard className="text-center text-base text-red-600">{error}</GlassCard>
-        ) : !entry ? (
-          <div className="flex justify-center py-10">
-            <div className="h-10 w-10 animate-spin rounded-full border-4 border-brand-200 border-t-brand-600" />
-          </div>
-        ) : (
-          <div className="flex flex-col gap-8">
-            <GlassCard>
+  if (!user || error || !entry) {
+    return (
+      <PageShell>
+        <Panel className="mx-auto max-w-[32rem] px-8 py-10 text-center">
+          {!user ? (
+            <>
+              <p className="mb-6 text-[15px] text-ink-2">Log in to see your past reviews</p>
+              <Button onClick={() => openAuthModal('login')}>Log in</Button>
+            </>
+          ) : error ? (
+            <>
+              <p role="alert" className="mb-6 text-[15px] text-pen">
+                {error}
+              </p>
+              {back}
+            </>
+          ) : (
+            <p className="text-[15px] text-ink-3">Loading this review</p>
+          )}
+        </Panel>
+      </PageShell>
+    )
+  }
+
+  return (
+    <PageShell width="wide">
+      <AnalysisView
+        analysis={entry.analysis_data}
+        meta={
+          <>
+            {formatDate(entry.created_at)} · <span className="capitalize">{entry.role_level}</span> role
+          </>
+        }
+        actions={back}
+        before={
+          <Section
+            id="job"
+            title="Job description"
+            first
+            action={
               <button
                 onClick={() => setShowJd((s) => !s)}
                 aria-expanded={showJd}
-                className="flex w-full items-center justify-between gap-3 text-left"
+                className="flex h-8 shrink-0 items-center rounded-md border border-line-strong px-3 text-sm text-ink-2 transition-colors duration-150 hover:bg-raised hover:text-ink focus-visible:outline-2 focus-visible:outline-blue-ink"
               >
-                <h2 className="text-xl font-bold text-slate-800">Job Description</h2>
-                <span className="text-sm font-semibold text-brand-600">{showJd ? 'Hide' : 'Show'}</span>
+                {showJd ? 'Hide' : 'Show all'}
               </button>
-              <p
-                className={
-                  'mt-4 whitespace-pre-wrap text-sm leading-relaxed text-slate-600 ' + (showJd ? '' : 'line-clamp-3')
-                }
-              >
-                {entry.job_description}
-              </p>
-            </GlassCard>
-            <AnalysisView analysis={entry.analysis_data} />
-          </div>
-        )}
-      </div>
+            }
+          >
+            <p className={'whitespace-pre-wrap text-[15px] leading-6 text-ink-2 ' + (showJd ? '' : 'line-clamp-3')}>
+              {entry.job_description}
+            </p>
+          </Section>
+        }
+      />
     </PageShell>
   )
 }

@@ -1,11 +1,12 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useState, type ReactNode } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import axios from 'axios'
+import { ChevronRight } from 'lucide-react'
 import { API_URL } from '../lib/api'
 import { authHeaders, useAuth } from '../lib/auth'
-import { formatDate } from '../lib/format'
+import { formatDate, RECOMMENDATION } from '../lib/format'
 import PageShell from '../components/PageShell'
-import GlassCard from '../components/GlassCard'
+import Panel from '../components/Panel'
 import Button from '../components/Button'
 
 type HistoryItem = {
@@ -16,9 +17,6 @@ type HistoryItem = {
   hiring_recommendation: string | null
   job_description_preview: string
 }
-
-const scoreColor = (v: number) =>
-  v >= 70 ? 'text-emerald-600' : v >= 50 ? 'text-amber-600' : 'text-red-600'
 
 export default function History() {
   const navigate = useNavigate()
@@ -31,76 +29,98 @@ export default function History() {
     axios
       .get(`${API_URL}/api/history/`, { headers: authHeaders() })
       .then((res) => setItems(res.data))
-      .catch(() => setError('Could not load your feedback history. Please try again.'))
+      .catch(() => setError('Couldn’t load your past reviews. Try again'))
   }, [user])
+
+  let body: ReactNode
+  if (!user) {
+    body = (
+      <Notice>
+        <p className="mb-6 text-[15px] text-ink-2">Log in to see your past reviews and the jobs they were scored against</p>
+        <Button onClick={() => openAuthModal('login')}>Log in</Button>
+      </Notice>
+    )
+  } else if (error) {
+    body = (
+      <Notice>
+        <p role="alert" className="text-[15px] text-pen">
+          {error}
+        </p>
+      </Notice>
+    )
+  } else if (!items) {
+    body = (
+      <Notice>
+        <p className="text-[15px] text-ink-3">Loading your past reviews</p>
+      </Notice>
+    )
+  } else if (items.length === 0) {
+    body = (
+      <Notice>
+        <p className="mb-6 text-[15px] text-ink-2">No reviews yet. Each one you run while logged in is saved here</p>
+        <Button onClick={() => navigate('/')}>Review a resume</Button>
+      </Notice>
+    )
+  } else {
+    body = (
+      <ul className="m-0 list-none overflow-hidden rounded-2xl border border-line bg-paper p-0 shadow-[var(--shadow-sheet)]">
+        {items.map((item, i) => {
+          const reco = RECOMMENDATION[item.hiring_recommendation ?? '']
+          return (
+            <li key={item.id} className={'animate-rise ' + (i > 0 ? 'border-t border-line' : '')}>
+              <Link
+                to={`/history/${item.id}`}
+                className="flex items-center gap-6 px-6 py-5 transition-colors duration-150 hover:bg-raised/60 focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-blue-ink"
+              >
+                <span className="w-12 shrink-0 font-serif text-[32px] leading-none tabular-nums text-ink">
+                  {item.overall_score ?? '––'}
+                </span>
+                <div className="min-w-0 flex-1">
+                  <p className="mb-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-[13px] text-ink-3">
+                    <span>{formatDate(item.created_at)}</span>
+                    <span className="capitalize">{item.role_level}</span>
+                    {reco && (
+                      <span className="flex items-center gap-2 text-ink-2">
+                        <span className={'h-1.5 w-1.5 rounded-full ' + reco.dot} aria-hidden="true" />
+                        {reco.label}
+                      </span>
+                    )}
+                  </p>
+                  <p className="line-clamp-2 text-[15px] leading-6 text-ink-2">{item.job_description_preview}</p>
+                </div>
+                <ChevronRight size={16} strokeWidth={1.5} className="shrink-0 text-ink-3" />
+              </Link>
+            </li>
+          )
+        })}
+      </ul>
+    )
+  }
 
   return (
     <PageShell>
-      <div className="mx-auto w-full max-w-4xl">
-        <div className="mb-6 flex flex-wrap items-center justify-between gap-3">
-          <h1 className="bg-gradient-to-r from-brand-600 to-[var(--color-accent-cyan)] bg-clip-text text-4xl font-extrabold tracking-tight text-transparent">
-            My Feedback
-          </h1>
-          <Button variant="ghost" onClick={() => navigate('/')}>
-            New Analysis
-          </Button>
-        </div>
-
-        {!user ? (
-          <GlassCard className="text-center">
-            <p className="mb-5 text-base text-slate-600">Log in to see your past feedback and job descriptions.</p>
-            <Button onClick={() => openAuthModal('login')}>Log in</Button>
-          </GlassCard>
-        ) : error ? (
-          <GlassCard className="text-center text-base text-red-600">{error}</GlassCard>
-        ) : !items ? (
-          <div className="flex justify-center py-10">
-            <div className="h-10 w-10 animate-spin rounded-full border-4 border-brand-200 border-t-brand-600" />
+      <div className="mx-auto max-w-[48rem]">
+        <div className="mb-8 flex flex-wrap items-end justify-between gap-4">
+          <div>
+            <h1 className="font-serif text-[40px] leading-[1.1] font-normal tracking-[-0.02em] text-ink">Past reviews</h1>
+            {items && items.length > 0 && (
+              <p className="mt-2 text-[15px] text-ink-3">
+                {items.length} {items.length === 1 ? 'review' : 'reviews'}, newest first
+              </p>
+            )}
           </div>
-        ) : items.length === 0 ? (
-          <GlassCard className="text-center">
-            <p className="mb-5 text-base text-slate-600">No analyses yet. Run one and it will show up here.</p>
-            <Button onClick={() => navigate('/')}>Analyze a Resume</Button>
-          </GlassCard>
-        ) : (
-          <ul className="flex flex-col gap-4">
-            {items.map((item) => (
-              <li key={item.id}>
-                <Link
-                  to={`/history/${item.id}`}
-                  className="glass flex items-center gap-5 rounded-[var(--radius-glass)] p-5 transition hover:-translate-y-0.5 hover:bg-white/80 sm:p-6"
-                >
-                  {item.overall_score !== null && (
-                    <div className="flex w-14 shrink-0 flex-col items-center">
-                      <span className={'text-3xl font-extrabold ' + scoreColor(item.overall_score)}>
-                        {item.overall_score}
-                      </span>
-                      <span className="text-[11px] font-medium uppercase tracking-wide text-slate-400">/ 100</span>
-                    </div>
-                  )}
-                  <div className="min-w-0 flex-1">
-                    <div className="mb-1.5 flex flex-wrap items-center gap-2 text-xs">
-                      <span className="font-medium text-slate-500">{formatDate(item.created_at)}</span>
-                      <span className="rounded-full bg-slate-100 px-2.5 py-0.5 font-medium capitalize text-slate-500">
-                        {item.role_level}
-                      </span>
-                      {item.hiring_recommendation && (
-                        <span className="rounded-full bg-brand-50 px-2.5 py-0.5 font-bold uppercase text-brand-700">
-                          {item.hiring_recommendation.replace(/_/g, ' ')}
-                        </span>
-                      )}
-                    </div>
-                    <p className="line-clamp-2 text-sm leading-relaxed text-slate-600">
-                      {item.job_description_preview}
-                    </p>
-                  </div>
-                  <span className="text-xl text-slate-300">›</span>
-                </Link>
-              </li>
-            ))}
-          </ul>
-        )}
+          {user && (
+            <Button variant="secondary" onClick={() => navigate('/')}>
+              New review
+            </Button>
+          )}
+        </div>
+        {body}
       </div>
     </PageShell>
   )
+}
+
+function Notice({ children }: { children: ReactNode }) {
+  return <Panel className="px-8 py-10 text-center">{children}</Panel>
 }

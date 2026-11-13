@@ -1,302 +1,363 @@
-import type { ReactNode } from 'react'
+import { useState, type ReactNode } from 'react'
+import { Check, Copy, Minus } from 'lucide-react'
 import { mockAnalysis } from '../mocks/analysis'
-import GlassCard from './GlassCard'
+import { RECOMMENDATION } from '../lib/format'
+import ScoreChart from './analysis/ScoreChart'
+import Ledger from './analysis/Ledger'
+import Redline from './analysis/Redline'
+import SectionIndex, { type IndexEntry } from './analysis/SectionIndex'
 
 // The mock fixture mirrors the backend response, so it doubles as the type.
 // ats_scan is optional: older history rows predate it, and a failed scan is just {error}.
 type MockAnalysis = typeof mockAnalysis
 export type AtsScan = MockAnalysis['ats_scan']
 export type AnalysisData = Omit<MockAnalysis, 'ats_scan'> & { ats_scan?: AtsScan | { error: string } }
+type Improvement = AnalysisData['improvements'][number]
 
-const scoreColor = (v: number) =>
-  v >= 70 ? 'bg-emerald-500' : v >= 50 ? 'bg-amber-500' : 'bg-red-500'
+const PRIORITIES = [
+  { key: 'high', label: 'High priority' },
+  { key: 'medium', label: 'Medium priority' },
+  { key: 'low', label: 'Low priority' },
+]
 
-const RECOMMENDATION_STYLES: Record<string, string> = {
-  strong_yes: 'bg-emerald-100 text-emerald-700',
-  yes: 'bg-emerald-100 text-emerald-700',
-  maybe: 'bg-amber-100 text-amber-700',
-  no: 'bg-red-100 text-red-700',
-  strong_no: 'bg-red-100 text-red-700',
+type AnalysisViewProps = {
+  analysis: Partial<AnalysisData>
+  /** True while sections are still streaming in */
+  streaming?: boolean
+  /** Shown under the recommendation in the rail, e.g. date and role level */
+  meta?: ReactNode
+  /** Buttons at the bottom of the rail */
+  actions: ReactNode
+  /** Extra sections at the top of the report, e.g. the job description */
+  before?: ReactNode
+  /** Shown before the first section arrives */
+  placeholder?: ReactNode
+  /** Status line at the end of the report, e.g. streaming progress or an error */
+  footer?: ReactNode
 }
 
 /**
- * The result cards for one analysis. Renders whatever sections are present, so it works both
- * while an analysis is still streaming in and for a finished one loaded from history.
+ * One analysis as a report: a sticky rail (score, recommendation, section index, actions)
+ * beside a single paper sheet. Renders whatever sections are present, so it works both while
+ * an analysis is streaming and for a finished one loaded from history.
  */
-export default function AnalysisView({ analysis }: { analysis: Partial<AnalysisData> }) {
-  const overall = analysis.overall_score ?? 0
-  const recoKey = analysis.hiring_recommendation
-  const readiness = analysis.interview_readiness
-  const scan = analysis.ats_scan && !('error' in analysis.ats_scan) ? analysis.ats_scan : undefined
+export default function AnalysisView({
+  analysis: a,
+  streaming = false,
+  meta,
+  actions,
+  before,
+  placeholder,
+  footer,
+}: AnalysisViewProps) {
+  const has = {
+    verdict: a.recruiter_first_impression !== undefined,
+    summary: a.tailored_summary !== undefined,
+    scores: a.scores !== undefined,
+    ledger: a.strengths !== undefined,
+    missing: a.keyword_analysis !== undefined,
+    ats: a.ats_analysis !== undefined,
+    readiness: a.interview_readiness !== undefined,
+    improvements: (a.improvements?.length ?? 0) > 0,
+  }
+
+  const index: IndexEntry[] = [
+    { id: 'verdict', label: 'Recruiter’s read', ready: a.hiring_recommendation_reason !== undefined },
+    { id: 'summary', label: 'Tailored summary', ready: has.summary },
+    { id: 'scores', label: 'Score breakdown', ready: has.scores },
+    { id: 'ledger', label: 'For and against', ready: a.red_flags !== undefined },
+    { id: 'missing', label: 'Missing from your resume', ready: a.tech_stack_analysis !== undefined },
+    { id: 'ats', label: 'ATS check', ready: has.ats },
+    { id: 'readiness', label: 'Interview readiness', ready: has.readiness },
+    { id: 'improvements', label: 'Line edits', ready: !streaming && has.improvements },
+  ]
 
   return (
-    <>
-      {/* Overall score */}
-      <GlassCard>
-        <div className="flex flex-col items-center gap-5 sm:flex-row sm:items-center sm:gap-8">
-          <ScoreRing value={overall} />
-          <div className="flex-1 text-center sm:text-left">
-            <div className="mb-2 flex flex-wrap items-center justify-center gap-3 sm:justify-start">
-              <span className="text-sm font-medium text-slate-500">Hiring recommendation</span>
-              <span
-                className={
-                  'rounded-full px-3 py-1 text-xs font-bold uppercase tracking-wide ' +
-                  (RECOMMENDATION_STYLES[recoKey ?? ''] || 'bg-slate-100 text-slate-600')
-                }
-              >
-                {recoKey?.replace(/_/g, ' ')}
-              </span>
-            </div>
-            <p className="text-base leading-relaxed text-slate-600">
-              {analysis.recruiter_first_impression}
-            </p>
-            {analysis.hiring_recommendation_reason && (
-              <p className="mt-3 border-t border-slate-200/70 pt-3 text-sm italic leading-relaxed text-slate-500">
-                {analysis.hiring_recommendation_reason}
-              </p>
+    <div className="grid gap-8 lg:grid-cols-[256px_minmax(0,1fr)] lg:gap-12">
+      <Rail analysis={a} index={index} streaming={streaming} meta={meta} actions={actions} />
+
+      <article className="min-w-0 overflow-hidden rounded-2xl border border-line bg-paper shadow-[var(--shadow-sheet)]">
+        {before}
+
+        {!has.verdict && placeholder}
+
+        {has.verdict && (
+          <Section id="verdict" title="Recruiter’s read" first={!before}>
+            <p className="font-serif text-[22px] leading-[1.45] text-ink">{a.recruiter_first_impression}</p>
+            {a.hiring_recommendation_reason && (
+              <p className="mt-4 max-w-[44rem] text-[15px] leading-6 text-ink-2">{a.hiring_recommendation_reason}</p>
             )}
-          </div>
+          </Section>
+        )}
+
+        {has.summary && (
+          <Section
+            id="summary"
+            title="Tailored summary"
+            note="Written for this job. Paste it at the top of your resume"
+            action={<CopyButton text={a.tailored_summary!} />}
+          >
+            <p className="rounded-lg bg-raised px-5 py-4 text-[15px] leading-[26px] text-ink">{a.tailored_summary}</p>
+          </Section>
+        )}
+
+        {has.scores && (
+          <Section id="scores" title="Score breakdown" note="Nine dimensions, highest first">
+            <ScoreChart scores={a.scores as Record<string, number>} overall={a.overall_score ?? 0} />
+          </Section>
+        )}
+
+        {has.ledger && (
+          <Section id="ledger" title="For and against">
+            <Ledger
+              forYou={{ items: a.strengths, flags: a.green_flags }}
+              against={{ items: a.weaknesses, flags: a.red_flags }}
+            />
+          </Section>
+        )}
+
+        {has.missing && <MissingSection analysis={a} />}
+
+        {/* Shown with Claude's notes (not when ats_scan streams in first), so it doesn't jump. */}
+        {has.ats && (
+          <AtsSection
+            ats={a.ats_analysis!}
+            scan={a.ats_scan && !('error' in a.ats_scan) ? a.ats_scan : undefined}
+            alreadyMissing={missingTerms(a)}
+          />
+        )}
+
+        {has.readiness && <ReadinessSection readiness={a.interview_readiness!} />}
+
+        {has.improvements && <Improvements items={a.improvements!} />}
+
+        {footer}
+      </article>
+    </div>
+  )
+}
+
+/* ─── Rail ─────────────────────────────────────────────────────────────── */
+
+function Rail({
+  analysis,
+  index,
+  streaming,
+  meta,
+  actions,
+}: {
+  analysis: Partial<AnalysisData>
+  index: IndexEntry[]
+  streaming: boolean
+  meta?: ReactNode
+  actions: ReactNode
+}) {
+  const reco = RECOMMENDATION[analysis.hiring_recommendation ?? '']
+  const hasScore = analysis.overall_score !== undefined
+
+  return (
+    <aside className="lg:sticky lg:top-8 lg:self-start">
+      <div className="flex items-end justify-between gap-6 lg:block">
+        <div>
+          <p className="text-sm text-ink-2">Overall</p>
+          <p className="mt-1 flex items-baseline gap-1 font-serif tabular-nums">
+            <span className={'text-[64px] leading-none ' + (hasScore ? 'animate-rise text-ink' : 'text-ink-3/40')}>
+              {hasScore ? analysis.overall_score : '––'}
+            </span>
+            <span className="text-xl text-ink-3">/100</span>
+          </p>
         </div>
-      </GlassCard>
-
-      {/* Tailored summary */}
-      {analysis.tailored_summary && (
-        <GlassCard>
-          <SectionTitle>Tailored Summary</SectionTitle>
-          <p className="mb-3 text-sm text-slate-400">
-            A job-tailored summary you can paste at the top of your resume.
-          </p>
-          <p className="rounded-2xl border border-white/70 bg-white/60 p-4 text-base leading-relaxed text-slate-700">
-            {analysis.tailored_summary}
-          </p>
-        </GlassCard>
-      )}
-
-      {/* Score breakdown */}
-      {analysis.scores && (
-      <GlassCard>
-        <SectionTitle>Score Breakdown</SectionTitle>
-        <div className="flex flex-col gap-3.5">
-          {Object.entries(analysis.scores).map(([key, value]) => (
-            <div key={key} className="grid grid-cols-[9rem_1fr_2rem] items-center gap-3 sm:grid-cols-[12rem_1fr_2rem]">
-              <span className="text-sm capitalize text-slate-500 sm:text-base">
-                {key.replace(/_/g, ' ')}
+        <p className="flex items-center gap-2 pb-2 text-[15px] text-ink lg:mt-4 lg:pb-0">
+          {reco ? (
+            <>
+              <span className={'h-2 w-2 rounded-full ' + reco.dot} aria-hidden="true" />
+              <span>
+                <span className="text-ink-2">Recommend:</span> {reco.label}
               </span>
-              <div className="h-2 overflow-hidden rounded-full bg-slate-200/70">
-                <div
-                  className={'h-full rounded-full transition-all duration-500 ' + scoreColor(value as number)}
-                  style={{ width: `${value}%` }}
-                />
-              </div>
-              <span className="text-right text-sm font-semibold text-slate-600">{value as number}</span>
+            </>
+          ) : (
+            <span className="text-ink-3">Recommendation pending</span>
+          )}
+        </p>
+      </div>
+
+      {meta && <p className="mt-2 text-sm text-ink-3">{meta}</p>}
+
+      <div className="mt-8 hidden border-t border-line pt-4 lg:block">
+        <SectionIndex entries={index} streaming={streaming} />
+      </div>
+
+      <div className="mt-6 flex flex-wrap items-center gap-2 border-t border-line pt-6 lg:flex-col lg:items-stretch">
+        {actions}
+      </div>
+    </aside>
+  )
+}
+
+/* ─── Report sections ──────────────────────────────────────────────────── */
+
+export function Section({
+  id,
+  title,
+  note,
+  action,
+  first = false,
+  children,
+}: {
+  id: string
+  title: string
+  note?: string
+  action?: ReactNode
+  first?: boolean
+  children: ReactNode
+}) {
+  return (
+    <section
+      id={id}
+      className={'animate-rise scroll-mt-8 px-6 py-8 sm:px-10 sm:py-10 ' + (first ? '' : 'border-t border-line')}
+    >
+      <div className="mb-6 flex items-start justify-between gap-4">
+        <div>
+          <h2 className="m-0 text-lg font-medium text-ink">{title}</h2>
+          {note && <p className="mt-1 text-sm text-ink-3">{note}</p>}
+        </div>
+        {action}
+      </div>
+      {children}
+    </section>
+  )
+}
+
+function CopyButton({ text }: { text: string }) {
+  const [copied, setCopied] = useState(false)
+  return (
+    <button
+      type="button"
+      onClick={() =>
+        navigator.clipboard.writeText(text).then(() => {
+          setCopied(true)
+          setTimeout(() => setCopied(false), 1600)
+        })
+      }
+      className="flex h-8 shrink-0 items-center gap-2 rounded-md border border-line-strong px-3 text-sm text-ink-2 transition-colors duration-150 hover:bg-raised hover:text-ink focus-visible:outline-2 focus-visible:outline-blue-ink"
+    >
+      {copied ? <Check size={16} strokeWidth={1.5} /> : <Copy size={16} strokeWidth={1.5} />}
+      {copied ? 'Copied' : 'Copy'}
+    </button>
+  )
+}
+
+function MissingSection({ analysis: a }: { analysis: Partial<AnalysisData> }) {
+  const critical = a.keyword_analysis?.missing_critical_keywords ?? []
+  const seen = new Set(critical.map((k) => k.toLowerCase()))
+  const fresh = (items?: string[]) => (items ?? []).filter((t) => !seen.has(t.toLowerCase()))
+  const tech = a.tech_stack_analysis
+
+  const rows = [
+    { label: 'Critical keywords', items: critical },
+    { label: 'Languages', items: fresh(tech?.languages?.missing_from_jd) },
+    { label: 'Frameworks and libraries', items: fresh(tech?.frameworks_and_libraries?.missing_from_jd) },
+    { label: 'Tools and platforms', items: fresh(tech?.tools_and_platforms?.missing_from_jd) },
+  ].filter((r) => r.items.length > 0)
+
+  return (
+    <Section id="missing" title="Missing from your resume" note="In the job description, not on your resume">
+      {rows.length === 0 ? (
+        <p className="text-[15px] text-ink-2">Nothing important is missing</p>
+      ) : (
+        <dl className="m-0 flex flex-col">
+          {rows.map((r, i) => (
+            <div
+              key={r.label}
+              className={
+                'grid gap-2 py-3 sm:grid-cols-[200px_minmax(0,1fr)] sm:gap-4 ' + (i > 0 ? 'border-t border-line' : '')
+              }
+            >
+              <dt className="pt-1 text-sm text-ink-2">{r.label}</dt>
+              <dd className="m-0 flex flex-wrap gap-2">
+                {r.items.map((t) => (
+                  <span key={t} className="rounded-md bg-raised px-2 py-1 text-sm text-ink">
+                    {t}
+                  </span>
+                ))}
+              </dd>
             </div>
           ))}
-        </div>
-      </GlassCard>
+        </dl>
       )}
+    </Section>
+  )
+}
 
-      {/* Strengths / weaknesses */}
-      {analysis.strengths && (
-      <div className="grid gap-8 md:grid-cols-2">
-        <GlassCard>
-          <SectionTitle>Strengths</SectionTitle>
-          <ul className="flex flex-col gap-3">
-            {analysis.strengths?.map((s: string, i: number) => (
-              <Bullet key={i} tone="green">{s}</Bullet>
+/** Every term the "Missing from your resume" section lists, lowercased. */
+function missingTerms(a: Partial<AnalysisData>): Set<string> {
+  const tech = a.tech_stack_analysis
+  return new Set(
+    [
+      ...(a.keyword_analysis?.missing_critical_keywords ?? []),
+      ...(tech?.languages?.missing_from_jd ?? []),
+      ...(tech?.frameworks_and_libraries?.missing_from_jd ?? []),
+      ...(tech?.tools_and_platforms?.missing_from_jd ?? []),
+    ].map((t) => t.toLowerCase())
+  )
+}
+
+function AtsSection({
+  ats,
+  scan,
+  alreadyMissing,
+}: {
+  ats: AnalysisData['ats_analysis']
+  /** Measured by the backend parser (services/ats.py); absent on older history rows */
+  scan?: AtsScan
+  alreadyMissing: Set<string>
+}) {
+  const issues = ats.formatting_issues ?? []
+  const order = ats.recommended_section_order ?? []
+  return (
+    <Section id="ats" title="ATS check" note="How applicant tracking software will parse the file">
+      <div className="grid gap-8 md:grid-cols-[minmax(0,1fr)_220px] md:gap-12">
+        <div>
+          {scan && <ParserResults scan={scan} alreadyMissing={alreadyMissing} />}
+          {scan && <p className="mb-3 mt-8 text-sm text-ink-2">Reviewer notes</p>}
+          <ul className="m-0 flex list-none flex-col gap-2 p-0">
+            <StatusRow ok={ats.keyword_density_ok}>
+              Keyword density {ats.keyword_density_ok ? 'is in range' : 'needs work for this posting'}
+            </StatusRow>
+            {issues.map((issue, i) => (
+              <StatusRow key={i} ok={false}>
+                {issue}
+              </StatusRow>
             ))}
           </ul>
-        </GlassCard>
-        <GlassCard>
-          <SectionTitle>Weaknesses</SectionTitle>
-          <ul className="flex flex-col gap-3">
-            {analysis.weaknesses?.map((w: string, i: number) => (
-              <Bullet key={i} tone="red">{w}</Bullet>
-            ))}
-          </ul>
-        </GlassCard>
-      </div>
-      )}
-
-      {/* Green / red flags */}
-      {analysis.green_flags && (
-      <div className="grid gap-8 md:grid-cols-2">
-        <GlassCard>
-          <SectionTitle>Green Flags</SectionTitle>
-          <ul className="flex flex-col gap-3">
-            {analysis.green_flags?.map((f: string, i: number) => (
-              <Bullet key={i} tone="green" icon="▲">{f}</Bullet>
-            ))}
-          </ul>
-        </GlassCard>
-        <GlassCard>
-          <SectionTitle>Red Flags</SectionTitle>
-          <ul className="flex flex-col gap-3">
-            {analysis.red_flags?.map((f: string, i: number) => (
-              <Bullet key={i} tone="red" icon="▼">{f}</Bullet>
-            ))}
-          </ul>
-        </GlassCard>
-      </div>
-      )}
-
-      {/* Missing keywords */}
-      {analysis.keyword_analysis && (
-      <GlassCard>
-        <SectionTitle>Missing Critical Keywords</SectionTitle>
-        <div className="flex flex-wrap gap-2">
-          {analysis.keyword_analysis?.missing_critical_keywords?.map((k: string, i: number) => (
-            <span key={i} className="rounded-full bg-red-50 px-3 py-1 text-sm font-medium text-red-600 ring-1 ring-red-100">
-              {k}
-            </span>
-          ))}
-        </div>
-      </GlassCard>
-      )}
-
-      {/* Tech-stack gaps */}
-      {analysis.tech_stack_analysis && (
-      <GlassCard>
-        <SectionTitle>Tech Stack Gaps</SectionTitle>
-        <p className="mb-4 text-sm text-slate-400">
-          In the job description but missing from your resume.
-        </p>
-        <div className="flex flex-col gap-4">
-          {[
-            { label: 'Languages', items: analysis.tech_stack_analysis?.languages?.missing_from_jd },
-            { label: 'Frameworks & Libraries', items: analysis.tech_stack_analysis?.frameworks_and_libraries?.missing_from_jd },
-            { label: 'Tools & Platforms', items: analysis.tech_stack_analysis?.tools_and_platforms?.missing_from_jd },
-          ].map(({ label, items }) =>
-            items && items.length > 0 ? (
-              <div key={label}>
-                <span className="mb-2 block text-sm font-semibold text-slate-500">{label}</span>
-                <div className="flex flex-wrap gap-2">
-                  {items.map((t: string, i: number) => (
-                    <span key={i} className="rounded-full bg-red-50 px-3 py-1 text-sm font-medium text-red-600 ring-1 ring-red-100">
-                      {t}
-                    </span>
-                  ))}
-                </div>
-              </div>
-            ) : null
+          {ats.file_format_notes && (
+            <p className="mt-6 text-sm leading-[22px] text-ink-2">{ats.file_format_notes}</p>
           )}
         </div>
-      </GlassCard>
-      )}
 
-      {/* ATS breakdown: measured parser results first, then Claude's notes */}
-      {(analysis.ats_analysis || scan) && (
-      <GlassCard>
-        <SectionTitle>ATS Breakdown</SectionTitle>
-        {scan && <ParserResults scan={scan} />}
-        {analysis.ats_analysis && scan && (
-          <span className="mb-2 mt-6 block text-sm font-semibold text-slate-500">Reviewer notes</span>
-        )}
-        {analysis.ats_analysis && (
-        <div className="mb-4 flex flex-wrap gap-3">
-          <div
-            className={
-              'flex items-center gap-2 rounded-xl px-4 py-2 text-base font-medium ' +
-              (analysis.ats_analysis?.keyword_density_ok ? 'bg-emerald-50 text-emerald-700' : 'bg-red-50 text-red-600')
-            }
-          >
-            <span className="text-base">{analysis.ats_analysis?.keyword_density_ok ? '✓' : '✗'}</span>
-            Keyword density
-          </div>
-        </div>
-        )}
-        {analysis.ats_analysis?.formatting_issues && analysis.ats_analysis.formatting_issues.length > 0 && (
-          <div className="mb-4">
-            <span className="mb-2 block text-sm font-semibold text-slate-500">Formatting issues</span>
-            <ul className="flex flex-col gap-3">
-              {analysis.ats_analysis.formatting_issues.map((issue: string, i: number) => (
-                <Bullet key={i} tone="red">{issue}</Bullet>
-              ))}
-            </ul>
-          </div>
-        )}
-        {analysis.ats_analysis?.recommended_section_order && analysis.ats_analysis.recommended_section_order.length > 0 && (
-          <div className="mb-4">
-            <span className="mb-2 block text-sm font-semibold text-slate-500">Recommended section order</span>
-            <ol className="flex flex-wrap items-center gap-2 text-sm text-slate-600">
-              {analysis.ats_analysis.recommended_section_order.map((section: string, i: number) => (
-                <li key={i} className="flex items-center gap-2">
-                  <span className="rounded-full bg-slate-100 px-3 py-1 font-medium">{i + 1}. {section}</span>
+        {order.length > 0 && (
+          <div>
+            <p className="mb-3 text-sm text-ink-2">Recommended section order</p>
+            <ol className="m-0 flex list-none flex-col gap-3 rounded-xl border border-line bg-desk p-4">
+              {order.map((s, i) => (
+                <li key={i} className="flex flex-col gap-1">
+                  <span className="flex items-baseline gap-2 text-sm text-ink">
+                    <span className="w-4 tabular-nums text-ink-3">{i + 1}</span>
+                    {s}
+                  </span>
+                  <span className="ml-6 h-1 rounded-full bg-line-strong" style={{ width: `${88 - (i % 3) * 18}%` }} />
                 </li>
               ))}
             </ol>
           </div>
         )}
-        {analysis.ats_analysis?.file_format_notes && (
-          <p className="border-t border-slate-200/70 pt-3 text-sm italic leading-relaxed text-slate-500">
-            {analysis.ats_analysis.file_format_notes}
-          </p>
-        )}
-      </GlassCard>
-      )}
-
-      {/* Interview readiness */}
-      {readiness && (
-      <GlassCard>
-        <SectionTitle>Interview Readiness</SectionTitle>
-        <div className="mb-4 flex flex-wrap gap-3">
-          {[
-            { label: 'Technical Screen', ok: readiness?.technical_screen_ready },
-            { label: 'System Design', ok: readiness?.system_design_ready },
-            { label: 'Behavioral', ok: readiness?.behavioral_ready },
-          ].map(({ label, ok }) => (
-            <div
-              key={label}
-              className={
-                'flex items-center gap-2 rounded-xl px-4 py-2 text-base font-medium ' +
-                (ok ? 'bg-emerald-50 text-emerald-700' : 'bg-red-50 text-red-600')
-              }
-            >
-              <span className="text-base">{ok ? '✓' : '✗'}</span>
-              {label}
-            </div>
-          ))}
-        </div>
-        {readiness?.notes && (
-          <p className="border-t border-slate-200/70 pt-3 text-sm italic leading-relaxed text-slate-500">
-            {readiness.notes}
-          </p>
-        )}
-      </GlassCard>
-      )}
-
-      {/* Improvements */}
-      {analysis.improvements && analysis.improvements.length > 0 && (
-      <GlassCard>
-        <SectionTitle>Improvements</SectionTitle>
-        <div className="flex flex-col gap-3">
-          {analysis.improvements?.map((imp, i: number) => (
-            <div key={i} className="rounded-2xl border border-white/70 bg-white/60 p-4">
-              <div className="mb-2 flex flex-wrap gap-2">
-                <PriorityBadge priority={imp.priority} />
-                <span className="rounded-full bg-slate-100 px-2.5 py-0.5 text-xs font-medium text-slate-500">
-                  {imp.category}
-                </span>
-              </div>
-              <p className="text-base leading-relaxed text-slate-700">{imp.suggestion}</p>
-              {imp.reference_text && (
-                <p className="mt-2 rounded-lg bg-slate-50 px-3 py-2 text-sm italic text-slate-500">
-                  "{imp.reference_text}"
-                </p>
-              )}
-              {imp.example_rewrite && (
-                <p className="mt-2 text-sm leading-relaxed text-brand-600">→ {imp.example_rewrite}</p>
-              )}
-            </div>
-          ))}
-        </div>
-      </GlassCard>
-      )}
-    </>
+      </div>
+    </Section>
   )
 }
 
 /** Facts measured from the PDF by the backend parser (services/ats.py), not model output. */
-function ParserResults({ scan }: { scan: AtsScan }) {
+function ParserResults({ scan, alreadyMissing }: { scan: AtsScan; alreadyMissing: Set<string> }) {
   const { contact, keyword_match: kw } = scan
   const contactMissing = [!contact.email && 'email', !contact.phone && 'phone'].filter(Boolean)
   const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? '' : 's'}`
@@ -317,7 +378,7 @@ function ParserResults({ scan }: { scan: AtsScan }) {
       ok: scan.image_count === 0,
       text: scan.image_count === 0 ? 'No images or icons' : `${plural(scan.image_count, 'image')} or icons`,
     },
-    { ok: !scan.header_footer_text, text: scan.header_footer_text ? 'Text in header/footer area' : 'Nothing in header/footer area' },
+    { ok: !scan.header_footer_text, text: scan.header_footer_text ? 'Text in the header/footer area' : 'Nothing in the header/footer area' },
     {
       ok: contactMissing.length === 0,
       text: contactMissing.length === 0 ? 'Email and phone found' : `No ${contactMissing.join(' or ')} found`,
@@ -330,32 +391,36 @@ function ParserResults({ scan }: { scan: AtsScan }) {
           : `Missing heading${scan.sections_missing.length > 1 ? 's' : ''}: ${scan.sections_missing.join(', ')}`,
     },
   ]
+  const total = kw.matched.length + kw.missing.length
+  // Terms already listed under "Missing from your resume" aren't repeated here.
+  const newlyMissing = kw.missing.filter((t) => !alreadyMissing.has(t.toLowerCase()))
 
   return (
     <div>
-      <span className="mb-2 block text-sm font-semibold text-slate-500">Parser results, measured from your PDF</span>
-      <ul className="grid gap-3 sm:grid-cols-2">
+      <p className="mb-3 text-sm text-ink-2">Measured from your PDF</p>
+      <ul className="m-0 flex list-none flex-col gap-2 p-0">
         {checks.map((c) => (
-          <Bullet key={c.text} tone={c.ok ? 'green' : 'red'}>
+          <StatusRow key={c.text} ok={c.ok}>
             {c.text}
-          </Bullet>
+          </StatusRow>
         ))}
       </ul>
-      {kw.matched.length + kw.missing.length > 0 && (
-        <div className="mt-5">
-          <span className="mb-2 block text-sm font-semibold text-slate-500">
-            Tech keywords from the posting: {kw.match_rate}% found ({kw.matched.length} of{' '}
-            {kw.matched.length + kw.missing.length})
-          </span>
+      {total > 0 && (
+        <div className="mt-6">
+          <p className="mb-3 text-sm text-ink-2">
+            {kw.match_rate}% of the posting’s tech keywords found ({kw.matched.length} of {total})
+          </p>
           <div className="flex flex-wrap gap-2">
             {kw.matched.map((t) => (
-              <span key={t} className="rounded-full bg-emerald-50 px-3 py-1 text-sm font-medium text-emerald-700">
-                ✓ {t}
+              <span key={t} className="inline-flex items-center gap-1 rounded-md bg-raised px-2 py-1 text-sm text-ink">
+                <Check size={14} strokeWidth={1.5} className="text-moss" aria-label="Found" />
+                {t}
               </span>
             ))}
-            {kw.missing.map((t) => (
-              <span key={t} className="rounded-full bg-red-50 px-3 py-1 text-sm font-medium text-red-600">
-                ✗ {t}
+            {newlyMissing.map((t) => (
+              <span key={t} className="inline-flex items-center gap-1 rounded-md bg-raised px-2 py-1 text-sm text-ink-2">
+                <Minus size={14} strokeWidth={1.5} className="text-pen" aria-label="Missing" />
+                {t}
               </span>
             ))}
           </div>
@@ -365,53 +430,75 @@ function ParserResults({ scan }: { scan: AtsScan }) {
   )
 }
 
-function SectionTitle({ children }: { children: ReactNode }) {
-  return <h2 className="mb-5 text-xl font-bold text-slate-800">{children}</h2>
+function ReadinessSection({ readiness }: { readiness: AnalysisData['interview_readiness'] }) {
+  const rows = [
+    { label: 'Technical screen', ok: readiness.technical_screen_ready },
+    { label: 'System design', ok: readiness.system_design_ready },
+    { label: 'Behavioral', ok: readiness.behavioral_ready },
+  ]
+  return (
+    <Section id="readiness" title="Interview readiness" note="Based on what the resume shows">
+      <dl className="m-0 grid max-w-[32rem] grid-cols-[minmax(0,1fr)_auto]">
+        {rows.map((r, i) => (
+          <div key={r.label} className="contents">
+            <dt className={'py-3 text-[15px] text-ink ' + (i > 0 ? 'border-t border-line' : '')}>{r.label}</dt>
+            <dd
+              className={
+                'm-0 flex items-center justify-end gap-2 py-3 text-sm ' +
+                (r.ok ? 'text-moss' : 'text-pen') +
+                (i > 0 ? ' border-t border-line' : '')
+              }
+            >
+              {r.ok ? <Check size={16} strokeWidth={1.5} /> : <Minus size={16} strokeWidth={1.5} />}
+              {r.ok ? 'Ready' : 'Not yet'}
+            </dd>
+          </div>
+        ))}
+      </dl>
+      {readiness.notes && <p className="mt-4 max-w-[44rem] text-[15px] leading-6 text-ink-2">{readiness.notes}</p>}
+    </Section>
+  )
 }
 
-function Bullet({
-  children,
-  tone,
-  icon,
-}: {
-  children: ReactNode
-  tone: 'green' | 'red'
-  icon?: string
-}) {
-  const color = tone === 'green' ? 'text-emerald-500' : 'text-red-500'
-  const mark = icon ?? (tone === 'green' ? '✓' : '✗')
+function Improvements({ items }: { items: Improvement[] }) {
   return (
-    <li className="flex gap-2 text-base leading-relaxed text-slate-600">
-      <span className={'font-bold ' + color}>{mark}</span>
+    <Section id="improvements" title="Line edits" note="What to change, most important first">
+      <div className="flex flex-col gap-10">
+        {PRIORITIES.map(({ key, label }) => {
+          const group = items.filter((imp) => imp.priority === key)
+          if (group.length === 0) return null
+          return (
+            <div key={key}>
+              <h3 className="mb-2 flex items-baseline gap-2 text-[15px] font-medium text-ink">
+                {label}
+                <span className="text-sm font-normal tabular-nums text-ink-3">{group.length}</span>
+              </h3>
+              <ol className="m-0 flex list-none flex-col p-0">
+                {group.map((imp, i) => (
+                  <li key={i} className="animate-rise flex flex-col gap-3 border-t border-line py-5">
+                    <p className="text-[13px] text-ink-3">{imp.category}</p>
+                    <p className="-mt-1 text-[15px] leading-6 text-ink">{imp.suggestion}</p>
+                    <Redline original={imp.reference_text || undefined} rewrite={imp.example_rewrite || undefined} />
+                  </li>
+                ))}
+              </ol>
+            </div>
+          )
+        })}
+      </div>
+    </Section>
+  )
+}
+
+function StatusRow({ ok, children }: { ok: boolean; children: ReactNode }) {
+  return (
+    <li className="flex gap-3 text-[15px] leading-6 text-ink-2">
+      {ok ? (
+        <Check size={16} strokeWidth={1.5} className="mt-1 shrink-0 text-moss" aria-label="Pass" />
+      ) : (
+        <Minus size={16} strokeWidth={1.5} className="mt-1 shrink-0 text-pen" aria-label="Issue" />
+      )}
       <span>{children}</span>
     </li>
-  )
-}
-
-function PriorityBadge({ priority }: { priority: string }) {
-  const styles: Record<string, string> = {
-    high: 'bg-red-100 text-red-700',
-    medium: 'bg-amber-100 text-amber-700',
-    low: 'bg-emerald-100 text-emerald-700',
-  }
-  return (
-    <span className={'rounded-full px-2.5 py-0.5 text-[11px] font-bold uppercase ' + (styles[priority] || 'bg-slate-100 text-slate-600')}>
-      {priority}
-    </span>
-  )
-}
-
-function ScoreRing({ value }: { value: number }) {
-  const color = value >= 70 ? '#10b981' : value >= 50 ? '#f59e0b' : '#ef4444'
-  return (
-    <div
-      className="relative flex h-32 w-32 shrink-0 items-center justify-center rounded-full"
-      style={{ background: `conic-gradient(${color} ${value * 3.6}deg, #e2e8f0 0deg)` }}
-    >
-      <div className="flex h-24 w-24 flex-col items-center justify-center rounded-full bg-white">
-        <span className="text-3xl font-extrabold text-slate-800">{value}</span>
-        <span className="text-[11px] font-medium uppercase tracking-wide text-slate-400">/ 100</span>
-      </div>
-    </div>
   )
 }
